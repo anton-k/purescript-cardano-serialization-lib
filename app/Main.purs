@@ -7,7 +7,6 @@ import Prelude
 import Effect (Effect)
 import Effect.Console (logShow)
 import Csl as Csl
-import Csl.Class as Csl
 
 --------------------------------------------------------
 -- console tests
@@ -17,7 +16,8 @@ main = do
   logShow "hi"
   logShow $ max (Csl.bigNum.fromStr "1000" * Csl.bigNum.fromStr "2") one
   logShow $ Csl.value.toJson $ Csl.value.new (Csl.bigNum.fromStr "1000")
-  txBuildExample
+
+  logShow $ Csl.bigNum.fromBytes $ Csl.bigNum.toBytes (Csl.bigNum.fromStr "1000")
 
 
 txBuildExample :: Effect Unit

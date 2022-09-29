@@ -8,22 +8,44 @@
 --  * inspect functions for Effectrful ones
 module Csl where
 
-import Data.Int (floor)
 import Prelude
+import Data.Int (floor)
+import Data.ArrayBuffer.Types (Uint8Array)
 import Effect (Effect)
 import Data.Maybe (Maybe)
-import Csl.Class (class FromHex, class ToHex)
 
 ----------------------------------------------------------------------------
 -- utils
 
-type Bytes = Array Int
+type Bytes = Uint8Array
 
 fromCompare :: Number -> Ordering
 fromCompare n
   | n < 0.0 = LT
   | n > 0.0 = GT
   | otherwise = EQ
+
+----------------------------------------------------------------------------
+-- classes
+
+class IsHex a where
+  toHex :: a -> String
+  fromHex :: String -> a
+
+class IsBech32 a where
+  toBech32 :: a -> String
+  fromBech32 :: String -> a
+
+class IsJson a where
+  toJson :: a -> String
+  fromJson :: String -> a
+
+class ToJsValue a b | a -> b where
+  toJsValue :: a -> b
+
+class IsBytes a where
+  toBytes :: a -> Bytes
+  fromBytes :: Bytes -> a
 
 ----------------------------------------------------------------------------
 -- numbers
@@ -33,10 +55,8 @@ fromCompare n
 instance Show BigNum where
   show = bigNum.toStr
 
-instance ToHex BigNum where
+instance IsHex BigNum where
   toHex = bigNum.toHex
-
-instance FromHex BigNum where
   fromHex = bigNum.fromHex
 
 instance Semiring BigNum where
@@ -61,10 +81,8 @@ instance Ord BigNum where
 instance Show BigInt where
   show = bigInt.toStr
 
-instance ToHex BigInt where
+instance IsHex BigInt where
   toHex = bigInt.toHex
-
-instance FromHex BigInt where
   fromHex = bigInt.fromHex
 
 instance Semiring BigInt where
