@@ -66,5 +66,6 @@ Alas for some functions it's not possible to tell is it pure
 or dirty. Submit an issue if you have found an effectful function
 which is declared like pure and vise versa.
 
+See the `code-gen` directory for the source code of the code parser and generator.
 
 
