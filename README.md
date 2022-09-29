@@ -35,6 +35,12 @@ and see translation conventions to use it in purescript.
   * `Input` to `In`
   * `ValueJSON` to `ValueJs` etc for all types
 
+## Possible issues
+
+Code is auto generated from CSL API.
+Alas for some functions it's not possible to tell is it pure
+or dirty. Submit an issue if you have found an effectful function
+which is declared like pure and vise versa.
 
 
 
