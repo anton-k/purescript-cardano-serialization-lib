@@ -67,6 +67,8 @@ include external github library. see the spago docs on how to do that.
   * `Input` to `In`
   * `ValueJSON` to `ValueJs` etc for all types
 
+So `TransactionInput` becomes `TxIn` and `AddressJSON` becomes `AddresJs`.
+
 ## Possible issues
 
 Code is auto generated from CSL API.
