@@ -3,6 +3,14 @@
 Pursecript library for cardano frontend types for [emurgo/cardano-serialisation-lib](https://github.com/Emurgo/cardano-serialization-lib)
 At the moment bindongs are only for browser version.
 
+Cardano serialization library can be used to work with Cardano types on frontend.
+We can create TX and export them to the form which can then be submitted
+over wallet or API to the node.
+
+The main ide of the library is to provide thin layer of FFI bindings to the original CSL library.
+It does not try to make any abstractions beyond what is provided with CSL. 
+It gives you solid foundation to build your own abstractions.
+
 ## How to use the library
 
 Library ports the [CSL api](https://github.com/Emurgo/cardano-serialization-lib/blob/master/rust/pkg/cardano_serialization_lib.js.flow).
