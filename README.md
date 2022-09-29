@@ -37,12 +37,12 @@ dependency on CSL:
 
 ```
 > esbuild \
-			./output/Main/index.js \
-			--bundle \
-			--outfile=demo/src/purs.js \
-			--platform=browser \
-			--format=esm \
-			--external:@emurgo/cardano-serialization-lib-browser
+  ./output/Main/index.js \
+  --bundle \
+  --outfile=demo/src/purs.js \
+  --platform=browser \
+  --format=esm \
+  --external:@emurgo/cardano-serialization-lib-browser
 ```
 
 To add the library to your project edit `packages.dhall` (see fields `upstream` and `with` on the examples in the comments) to
