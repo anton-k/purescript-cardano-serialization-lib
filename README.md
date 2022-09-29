@@ -1,6 +1,7 @@
 # purescript-cardano-serialization-lib
 
 Pursecript library for cardano frontend types for [emurgo/cardano-serialisation-lib](https://github.com/Emurgo/cardano-serialization-lib)
+At the moment bindongs are only for browser version.
 
 ## How to use the library
 
@@ -23,6 +24,29 @@ Csl.bigNum.fromStr "100200"
 
 So you can apply all the functions from emurgo/CSL. Just read the original API
 and see translation conventions to use it in purescript.
+
+### How to build your code with it
+
+To use this library you whould also add emurgo/cardano-serialization-lib-browser
+as external dependency. Provide this library with your JS code package manager
+and also compile the purs code with it as external dep.
+
+See the Makefile for example how to do it. We should build with spago
+and use esbuild on packaging to js code bundle where we can set up the external 
+dependency on CSL:
+
+```
+> esbuild \
+			./output/Main/index.js \
+			--bundle \
+			--outfile=demo/src/purs.js \
+			--platform=browser \
+			--format=esm \
+			--external:@emurgo/cardano-serialization-lib-browser
+```
+
+To add the library to your project edit `packages.dhall` (see fields `upstream` and `with` on the examples in the comments) to
+include external github library. see the spago docs on how to do that.
 
 ## Used translation conventions
 
