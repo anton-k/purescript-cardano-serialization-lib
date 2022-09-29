@@ -9,7 +9,7 @@ esbuild-cmd := "esbuild \
 			--external:@emurgo/cardano-serialization-lib-browser"
 
 build:
-	spago build
+	spago build 
 
 test:
 	echo "TODO: implement purs tests"
@@ -28,5 +28,4 @@ format:
 
 check-format:
 	purs-tidy check "src/**/*.purs"
-
 

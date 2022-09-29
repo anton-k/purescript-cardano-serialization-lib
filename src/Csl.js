@@ -1823,7 +1823,7 @@ export const txBuilderConstants_plutusVasilCostModels = CSL.TxBuilderConstants.p
 
 // TxInputsBuilder
 export const txInsBuilder_free = self => () => self.free();
-export const txInsBuilder_new = CSL.TxInputsBuilder.new();
+export const txInsBuilder_new = () => CSL.TxInputsBuilder.new();
 export const txInsBuilder_addKeyIn = self => hash => input => amount => () => self.add_key_input(hash, input, amount);
 export const txInsBuilder_addScriptIn = self => hash => input => amount => () => self.add_script_input(hash, input, amount);
 export const txInsBuilder_addNativeScriptIn = self => script => input => amount => () => self.add_native_script_input(script, input, amount);

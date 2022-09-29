@@ -7,6 +7,7 @@ import Prelude
 import Effect (Effect)
 import Effect.Console (logShow)
 import Csl as Csl
+import Csl.Class as Csl
 
 --------------------------------------------------------
 -- console tests
@@ -16,26 +17,28 @@ main = do
   logShow "hi"
   logShow $ max (Csl.bigNum.fromStr "1000" * Csl.bigNum.fromStr "2") one
   logShow $ Csl.value.toJson $ Csl.value.new (Csl.bigNum.fromStr "1000")
+  txBuildExample
 
-{-
+
 txBuildExample :: Effect Unit
 txBuildExample = do
   let
-    addr = getRight $ byronFromBase58
+    addr = Csl.byronAddress.fromBase58
       "Ae2tdPwUPEZLs4HtbuNey7tK4hTKrwNwYtGqp7bDfCy2WdR3P6735W5Yfpe"
-    hash = getJust $ Csl.fromHex
+    hash = Csl.txHash.fromHex
       "488afed67b342d41ec08561258e210352fba2ac030c98a8199bc22ec7a27ccf1"
-  builder <- newTxBuilder
-  setFee builder (bigNumFromString "10")
-  setTtl builder (bigNumFromString "100000")
-  addBootstrapInput builder addr (initTxIn hash 0) (initValue (bigNumFromString "3000000"))
-  addOutput builder (initTxOut (byronToAddress addr) (initValue (bigNumFromString "10000000")))
-  setCollateral builder =<< do
-    ins <- TxIns.newTxInsBuilder
-    TxIns.addBootstrapInput ins addr (initTxIn hash 0) (initValue (bigNumFromString "300000"))
+  let config = Csl.txBuilderConfigBuilder.build Csl.txBuilderConfigBuilder.new
+  builder <- Csl.txBuilder.new config
+  Csl.txBuilder.setFee builder (Csl.bigNum.fromStr "10")
+  Csl.txBuilder.setTtlBignum builder (Csl.bigNum.fromStr "100000")
+  Csl.txBuilder.addBootstrapIn builder addr (Csl.txIn.new hash 0.0) (Csl.value.new (Csl.bigNum.fromStr "3000000"))
+  Csl.txBuilder.addOut builder (Csl.txOut.new (Csl.byronAddress.toAddress addr) (Csl.value.new (Csl.bigNum.fromStr "10000000")))
+  Csl.txBuilder.setCollateral builder =<< do
+    ins <- Csl.txInsBuilder.new
+    Csl.txInsBuilder.addBootstrapIn ins addr (Csl.txIn.new hash 0.0) (Csl.value.new (Csl.bigNum.fromStr "300000"))
     pure ins
 
-  logShow $ fullSize builder
-  txBody <- buildTxBody builder
-  logShow $ hashTx txBody
-  -}
+  logShow $ Csl.txBuilder.fullSize builder
+  let txBody = Csl.txBuilder.build builder
+  logShow $ Csl.txHash.toHex $ Csl.hashTx txBody
+
