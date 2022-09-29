@@ -2,7 +2,6 @@
 --
 -- Missing parts
 --  * generate standard instances: fromHex toHex etc
---  * define Bytes interchangeable with Uint8Array
 --  * generate JSON types and convertions
 --  * should we use safer versions with Maybe for partial functions?
 --  * inspect functions for Effectrful ones
