@@ -1,17 +1,16 @@
-module Lib where
+module Csl.Gen where
 
 import Data.Char
 import Data.Set (Set)
 import Data.Set qualified as Set
 import Data.List as L
 import Data.List.Split (splitOn)
-import Data.List.Extra (trim)
 import Data.Maybe (mapMaybe)
 import Data.Text qualified as T
 import Data.Text.Manipulate qualified as T (toCamel, upperHead, lowerHead)
 
-someFunc :: IO ()
-someFunc = putStrLn "someFunc"
+import Csl.Parse
+import Csl.Types
 
 standardTypes :: Set String
 standardTypes = Set.fromList
@@ -23,47 +22,6 @@ standardTypes = Set.fromList
   , "Unit"
   , "Bytes"
   ]
-
-file = "../cardano-serialization-lib/rust/pkg/cardano_serialization_lib.js.flow"
-
-toFunParts :: String -> [String]
-toFunParts = splitOn "\n\n"
-
-funPrefix = "declare export function "
-
-isFun :: String -> Bool
-isFun str = length (splitOn funPrefix str) == 2
-
-funs :: String -> [Fun]
-funs = mapMaybe parseFun . toFunParts
-
-data Arg = Arg
-  { arg'name :: String
-  , arg'type :: String
-  }
-  deriving (Show)
-
-data Fun = Fun
-  { fun'name :: String
-  , fun'args :: [Arg]
-  , fun'res  :: String
-  }
-  deriving (Show)
-
-data Class = Class
-  { class'name :: String
-  , class'methods :: [Method]
-  }
-  deriving (Show)
-
-data MethodType = StaticMethod | ObjectMethod
-  deriving (Show)
-
-data Method = Method
-  { method'type :: MethodType
-  , method'fun :: Fun
-  }
-  deriving (Show)
 
 postProcTypes :: [String] -> [String]
 postProcTypes = filter (not . flip Set.member standardTypes) . L.sort . L.nub
@@ -239,53 +197,6 @@ upperHead = T.unpack . T.upperHead . T.pack
 lowerHead :: String -> String
 lowerHead = T.unpack . T.lowerHead . T.pack
 
-parseFun :: String -> Maybe Fun
-parseFun str =
-  case splitOn funPrefix str of
-    [_, content] -> funBody content
-    _ -> Nothing
-
-funBody :: String -> Maybe Fun
-funBody content = do
-  (name, rest1) <- split2 "(" content
-  (args, rest2) <- split2 "):" rest1
-  (res, _) <- split2 ";" rest2
-  pure $ Fun (trim name) (parseArgs args) (trim res)
-
-split2 :: String -> String -> Maybe (String, String)
-split2 delim str = case splitOn delim str of
-  [a, b] -> Just (a, b)
-  _      -> Nothing
-
-parseArgs :: String -> [Arg]
-parseArgs str = mapMaybe parseArg $ splitOn "," str
-
-parseArg :: String -> Maybe Arg
-parseArg str =
-  case splitOn ":" str of
-    [a, b] -> Just $ Arg (trim a) (trim b)
-    _ -> Nothing
-
-classPrefix = "declare export class "
-
-toClassParts = tail . splitOn classPrefix
-
-parseClass :: String -> Class
-parseClass str = Class (trim name) ms
-  where
-    name : rest1 = splitOn " {" (removeComments str)
-    body : _ = splitOn "}" (mconcat rest1)
-    ms = mapMaybe parseMethods $ fmap (<> ";") $ splitOn ";" body
-
-parseMethods :: String -> Maybe Method
-parseMethods str = toMethod <$> funBody str
-  where
-    toMethod x
-      | L.isPrefixOf "static " (fun'name x) = Method StaticMethod (rmStaticPrefix x)
-      | otherwise                           = Method ObjectMethod x
-
-    rmStaticPrefix x = x { fun'name = drop 7 $ fun'name x }
-
 isPure :: String -> Fun -> Bool
 isPure className Fun{..} =
    fun'res /= "void" && not (dirtyMethods (className, fun'name))
@@ -294,11 +205,4 @@ dirtyMethods :: (String, String) -> Bool
 dirtyMethods a = case a of
   ("TransactionBuilder", "new") -> True
   _                             -> False
-
-removeComments :: String -> String
-removeComments str = mconcat $
-  case splitOn "/*" str of
-    [] -> []
-    a:[] -> [a]
-    a:rest -> a : fmap (mconcat . tail . splitOn "*/") rest
 

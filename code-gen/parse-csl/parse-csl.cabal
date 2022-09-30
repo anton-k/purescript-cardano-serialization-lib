@@ -25,7 +25,10 @@ source-repository head
 
 library
   exposed-modules:
-      Lib
+      Csl
+      Csl.Gen
+      Csl.Parse
+      Csl.Types
   other-modules:
       Paths_parse_csl
   hs-source-dirs:

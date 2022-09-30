@@ -46,6 +46,9 @@ class IsBytes a where
   toBytes :: a -> Bytes
   fromBytes :: Bytes -> a
 
+class HasFree a where
+  free :: a -> Effect Unit
+
 ----------------------------------------------------------------------------
 -- numbers
 

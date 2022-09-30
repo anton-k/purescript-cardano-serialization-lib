@@ -1,6 +1,6 @@
 module Main (main) where
 
-import Lib
+import Csl
 
 main :: IO ()
 main = do
@@ -13,25 +13,4 @@ main = do
   print a
 -}
 
-exportPursTypes = do
-  cs <- getClasses
-  writeFile "types.purs" (unlines $ fmap typePurs $ classTypes cs)
 
-
-exporFuns = do
-  fs <- funs <$> readFile file
-  mapM_ putStrLn $ fmap funPurs fs
-  putStrLn "\n"
-  mapM_ putStrLn $ fmap typePurs $ funsTypes fs
-  putStrLn "\n"
-  mapM_ putStrLn $ fmap funJs fs
-
-exportPursClasses = do
-  cs <- getClasses
-  writeFile "class.purs" (unlines $ fmap classPurs cs)
-
-exportJsClasses = do
-  cs <- getClasses
-  writeFile "class.js" (unlines $ fmap classJs cs)
-
-getClasses = fmap parseClass . toClassParts  <$> readFile file
