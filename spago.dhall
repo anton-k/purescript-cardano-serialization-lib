@@ -15,9 +15,11 @@ to generate this file without the comments in this block.
   [ "arraybuffer-types"
   , "console"
   , "effect"
-  , "integers"
   , "maybe"
+  , "nullable"
   , "prelude"
+  , "foldable-traversable"
+  , "argonaut-core"
   ]
 , packages = ./packages.dhall
 , sources = [ "src/**/*.purs", "test/**/*.purs", "app/**/*.purs" ]

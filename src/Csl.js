@@ -62,9 +62,9 @@ export const assetNames_fromHex = hex_str => CSL.AssetNames.from_hex(hex_str);
 export const assetNames_toJson = self => self.to_json();
 export const assetNames_toJsValue = self => self.to_js_value();
 export const assetNames_fromJson = json => CSL.AssetNames.from_json(json);
-export const assetNames_new = CSL.AssetNames.new();
-export const assetNames_len = self => self.len();
-export const assetNames_get = self => index => self.get(index);
+export const assetNames_new = () => CSL.AssetNames.new();
+export const assetNames_len = self => () => self.len();
+export const assetNames_get = self => index => () => self.get(index);
 export const assetNames_add = self => elem => () => self.add(elem);
 
 // Assets
@@ -76,11 +76,11 @@ export const assets_fromHex = hex_str => CSL.Assets.from_hex(hex_str);
 export const assets_toJson = self => self.to_json();
 export const assets_toJsValue = self => self.to_js_value();
 export const assets_fromJson = json => CSL.Assets.from_json(json);
-export const assets_new = CSL.Assets.new();
-export const assets_len = self => self.len();
-export const assets_insert = self => key => value => self.insert(key, value);
-export const assets_get = self => key => self.get(key);
-export const assets_keys = self => self.keys();
+export const assets_new = () => CSL.Assets.new();
+export const assets_len = self => () => self.len();
+export const assets_insert = self => key => value => () => self.insert(key, value);
+export const assets_get = self => key => () => self.get(key);
+export const assets_keys = self => () => self.keys();
 
 // AuxiliaryData
 export const auxiliaryData_free = self => () => self.free();
@@ -91,12 +91,12 @@ export const auxiliaryData_fromHex = hex_str => CSL.AuxiliaryData.from_hex(hex_s
 export const auxiliaryData_toJson = self => self.to_json();
 export const auxiliaryData_toJsValue = self => self.to_js_value();
 export const auxiliaryData_fromJson = json => CSL.AuxiliaryData.from_json(json);
-export const auxiliaryData_new = CSL.AuxiliaryData.new();
+export const auxiliaryData_new = () => CSL.AuxiliaryData.new();
 export const auxiliaryData_metadata = self => self.metadata();
 export const auxiliaryData_setMetadata = self => metadata => () => self.set_metadata(metadata);
-export const auxiliaryData_nativeScripts = self => self.native_scripts();
+export const auxiliaryData_nativeScripts = self => () => self.native_scripts();
 export const auxiliaryData_setNativeScripts = self => native_scripts => () => self.set_native_scripts(native_scripts);
-export const auxiliaryData_plutusScripts = self => self.plutus_scripts();
+export const auxiliaryData_plutusScripts = self => () => self.plutus_scripts();
 export const auxiliaryData_setPlutusScripts = self => plutus_scripts => () => self.set_plutus_scripts(plutus_scripts);
 
 // AuxiliaryDataHash
@@ -110,11 +110,11 @@ export const auxiliaryDataHash_fromHex = hex => CSL.AuxiliaryDataHash.from_hex(h
 
 // AuxiliaryDataSet
 export const auxiliaryDataSet_free = self => () => self.free();
-export const auxiliaryDataSet_new = CSL.AuxiliaryDataSet.new();
+export const auxiliaryDataSet_new = () => CSL.AuxiliaryDataSet.new();
 export const auxiliaryDataSet_len = self => self.len();
-export const auxiliaryDataSet_insert = self => tx_index => data => self.insert(tx_index, data);
-export const auxiliaryDataSet_get = self => tx_index => self.get(tx_index);
-export const auxiliaryDataSet_indices = self => self.indices();
+export const auxiliaryDataSet_insert = self => tx_index => data => () => self.insert(tx_index, data);
+export const auxiliaryDataSet_get = self => tx_index => () => self.get(tx_index);
+export const auxiliaryDataSet_indices = self => () => self.indices();
 
 // BaseAddress
 export const baseAddress_free = self => () => self.free();
@@ -238,9 +238,9 @@ export const bootstrapWitness_new = vkey => signature => chain_code => attribute
 
 // BootstrapWitnesses
 export const bootstrapWitnesses_free = self => () => self.free();
-export const bootstrapWitnesses_new = CSL.BootstrapWitnesses.new();
-export const bootstrapWitnesses_len = self => self.len();
-export const bootstrapWitnesses_get = self => index => self.get(index);
+export const bootstrapWitnesses_new = () => CSL.BootstrapWitnesses.new();
+export const bootstrapWitnesses_len = self => () => self.len();
+export const bootstrapWitnesses_get = self => index => () => self.get(index);
 export const bootstrapWitnesses_add = self => elem => () => self.add(elem);
 
 // ByronAddress
@@ -291,9 +291,9 @@ export const certificates_fromHex = hex_str => CSL.Certificates.from_hex(hex_str
 export const certificates_toJson = self => self.to_json();
 export const certificates_toJsValue = self => self.to_js_value();
 export const certificates_fromJson = json => CSL.Certificates.from_json(json);
-export const certificates_new = CSL.Certificates.new();
-export const certificates_len = self => self.len();
-export const certificates_get = self => index => self.get(index);
+export const certificates_new = () => CSL.Certificates.new();
+export const certificates_len = self => () => self.len();
+export const certificates_get = self => index => () => self.get(index);
 export const certificates_add = self => elem => () => self.add(elem);
 
 // ConstrPlutusData
@@ -318,10 +318,10 @@ export const costModel_fromHex = hex_str => CSL.CostModel.from_hex(hex_str);
 export const costModel_toJson = self => self.to_json();
 export const costModel_toJsValue = self => self.to_js_value();
 export const costModel_fromJson = json => CSL.CostModel.from_json(json);
-export const costModel_new = CSL.CostModel.new();
-export const costModel_set = self => operation => cost => self.set(operation, cost);
-export const costModel_get = self => operation => self.get(operation);
-export const costModel_len = self => self.len();
+export const costModel_new = () => CSL.CostModel.new();
+export const costModel_set = self => operation => cost => () => self.set(operation, cost);
+export const costModel_get = self => operation => () => self.get(operation);
+export const costModel_len = self => () => self.len();
 
 // Costmdls
 export const costmdls_free = self => () => self.free();
@@ -332,36 +332,36 @@ export const costmdls_fromHex = hex_str => CSL.Costmdls.from_hex(hex_str);
 export const costmdls_toJson = self => self.to_json();
 export const costmdls_toJsValue = self => self.to_js_value();
 export const costmdls_fromJson = json => CSL.Costmdls.from_json(json);
-export const costmdls_new = CSL.Costmdls.new();
-export const costmdls_len = self => self.len();
-export const costmdls_insert = self => key => value => self.insert(key, value);
-export const costmdls_get = self => key => self.get(key);
-export const costmdls_keys = self => self.keys();
+export const costmdls_new = () => CSL.Costmdls.new();
+export const costmdls_len = self => () => self.len();
+export const costmdls_insert = self => key => value => () => self.insert(key, value);
+export const costmdls_get = self => key => () => self.get(key);
+export const costmdls_keys = self => () => self.keys();
 export const costmdls_retainLanguageVersions = self => languages => self.retain_language_versions(languages);
 
 // DNSRecordAorAAAA
-export const dNSRecordAorAAAA_free = self => () => self.free();
-export const dNSRecordAorAAAA_toBytes = self => self.to_bytes();
-export const dNSRecordAorAAAA_fromBytes = bytes => CSL.DNSRecordAorAAAA.from_bytes(bytes);
-export const dNSRecordAorAAAA_toHex = self => self.to_hex();
-export const dNSRecordAorAAAA_fromHex = hex_str => CSL.DNSRecordAorAAAA.from_hex(hex_str);
-export const dNSRecordAorAAAA_toJson = self => self.to_json();
-export const dNSRecordAorAAAA_toJsValue = self => self.to_js_value();
-export const dNSRecordAorAAAA_fromJson = json => CSL.DNSRecordAorAAAA.from_json(json);
-export const dNSRecordAorAAAA_new = dns_name => CSL.DNSRecordAorAAAA.new(dns_name);
-export const dNSRecordAorAAAA_record = self => self.record();
+export const dnsRecordAorAAAA_free = self => () => self.free();
+export const dnsRecordAorAAAA_toBytes = self => self.to_bytes();
+export const dnsRecordAorAAAA_fromBytes = bytes => CSL.DNSRecordAorAAAA.from_bytes(bytes);
+export const dnsRecordAorAAAA_toHex = self => self.to_hex();
+export const dnsRecordAorAAAA_fromHex = hex_str => CSL.DNSRecordAorAAAA.from_hex(hex_str);
+export const dnsRecordAorAAAA_toJson = self => self.to_json();
+export const dnsRecordAorAAAA_toJsValue = self => self.to_js_value();
+export const dnsRecordAorAAAA_fromJson = json => CSL.DNSRecordAorAAAA.from_json(json);
+export const dnsRecordAorAAAA_new = dns_name => CSL.DNSRecordAorAAAA.new(dns_name);
+export const dnsRecordAorAAAA_record = self => self.record();
 
 // DNSRecordSRV
-export const dNSRecordSRV_free = self => () => self.free();
-export const dNSRecordSRV_toBytes = self => self.to_bytes();
-export const dNSRecordSRV_fromBytes = bytes => CSL.DNSRecordSRV.from_bytes(bytes);
-export const dNSRecordSRV_toHex = self => self.to_hex();
-export const dNSRecordSRV_fromHex = hex_str => CSL.DNSRecordSRV.from_hex(hex_str);
-export const dNSRecordSRV_toJson = self => self.to_json();
-export const dNSRecordSRV_toJsValue = self => self.to_js_value();
-export const dNSRecordSRV_fromJson = json => CSL.DNSRecordSRV.from_json(json);
-export const dNSRecordSRV_new = dns_name => CSL.DNSRecordSRV.new(dns_name);
-export const dNSRecordSRV_record = self => self.record();
+export const dnsRecordSRV_free = self => () => self.free();
+export const dnsRecordSRV_toBytes = self => self.to_bytes();
+export const dnsRecordSRV_fromBytes = bytes => CSL.DNSRecordSRV.from_bytes(bytes);
+export const dnsRecordSRV_toHex = self => self.to_hex();
+export const dnsRecordSRV_fromHex = hex_str => CSL.DNSRecordSRV.from_hex(hex_str);
+export const dnsRecordSRV_toJson = self => self.to_json();
+export const dnsRecordSRV_toJsValue = self => self.to_js_value();
+export const dnsRecordSRV_fromJson = json => CSL.DNSRecordSRV.from_json(json);
+export const dnsRecordSRV_new = dns_name => CSL.DNSRecordSRV.new(dns_name);
+export const dnsRecordSRV_record = self => self.record();
 
 // DataCost
 export const dataCost_free = self => () => self.free();
@@ -458,11 +458,11 @@ export const generalTxMetadata_fromHex = hex_str => CSL.GeneralTransactionMetada
 export const generalTxMetadata_toJson = self => self.to_json();
 export const generalTxMetadata_toJsValue = self => self.to_js_value();
 export const generalTxMetadata_fromJson = json => CSL.GeneralTransactionMetadata.from_json(json);
-export const generalTxMetadata_new = CSL.GeneralTransactionMetadata.new();
-export const generalTxMetadata_len = self => self.len();
-export const generalTxMetadata_insert = self => key => value => self.insert(key, value);
-export const generalTxMetadata_get = self => key => self.get(key);
-export const generalTxMetadata_keys = self => self.keys();
+export const generalTxMetadata_new = () => CSL.GeneralTransactionMetadata.new();
+export const generalTxMetadata_len = self => () => self.len();
+export const generalTxMetadata_insert = self => key => value => () => self.insert(key, value);
+export const generalTxMetadata_get = self => key => () => self.get(key);
+export const generalTxMetadata_keys = self => () => self.keys();
 
 // GenesisDelegateHash
 export const genesisDelegateHash_free = self => () => self.free();
@@ -491,9 +491,9 @@ export const genesisHashes_fromHex = hex_str => CSL.GenesisHashes.from_hex(hex_s
 export const genesisHashes_toJson = self => self.to_json();
 export const genesisHashes_toJsValue = self => self.to_js_value();
 export const genesisHashes_fromJson = json => CSL.GenesisHashes.from_json(json);
-export const genesisHashes_new = CSL.GenesisHashes.new();
-export const genesisHashes_len = self => self.len();
-export const genesisHashes_get = self => index => self.get(index);
+export const genesisHashes_new = () => CSL.GenesisHashes.new();
+export const genesisHashes_len = self => () => self.len();
+export const genesisHashes_get = self => index => () => self.get(index);
 export const genesisHashes_add = self => elem => () => self.add(elem);
 
 // GenesisKeyDelegation
@@ -596,18 +596,18 @@ export const ipv6_new = data => CSL.Ipv6.new(data);
 export const ipv6_ip = self => self.ip();
 
 // KESSignature
-export const kESSignature_free = self => () => self.free();
-export const kESSignature_toBytes = self => self.to_bytes();
-export const kESSignature_fromBytes = bytes => CSL.KESSignature.from_bytes(bytes);
+export const kesSignature_free = self => () => self.free();
+export const kesSignature_toBytes = self => self.to_bytes();
+export const kesSignature_fromBytes = bytes => CSL.KESSignature.from_bytes(bytes);
 
 // KESVKey
-export const kESVKey_free = self => () => self.free();
-export const kESVKey_fromBytes = bytes => CSL.KESVKey.from_bytes(bytes);
-export const kESVKey_toBytes = self => self.to_bytes();
-export const kESVKey_toBech32 = self => prefix => self.to_bech32(prefix);
-export const kESVKey_fromBech32 = bech_str => CSL.KESVKey.from_bech32(bech_str);
-export const kESVKey_toHex = self => self.to_hex();
-export const kESVKey_fromHex = hex => CSL.KESVKey.from_hex(hex);
+export const kesvKey_free = self => () => self.free();
+export const kesvKey_fromBytes = bytes => CSL.KESVKey.from_bytes(bytes);
+export const kesvKey_toBytes = self => self.to_bytes();
+export const kesvKey_toBech32 = self => prefix => self.to_bech32(prefix);
+export const kesvKey_fromBech32 = bech_str => CSL.KESVKey.from_bech32(bech_str);
+export const kesvKey_toHex = self => self.to_hex();
+export const kesvKey_fromHex = hex => CSL.KESVKey.from_hex(hex);
 
 // Language
 export const language_free = self => () => self.free();
@@ -624,9 +624,9 @@ export const language_kind = self => self.kind();
 
 // Languages
 export const languages_free = self => () => self.free();
-export const languages_new = CSL.Languages.new();
-export const languages_len = self => self.len();
-export const languages_get = self => index => self.get(index);
+export const languages_new = () => CSL.Languages.new();
+export const languages_len = self => () => self.len();
+export const languages_get = self => index => () => self.get(index);
 export const languages_add = self => elem => () => self.add(elem);
 
 // LegacyDaedalusPrivateKey
@@ -642,19 +642,19 @@ export const linearFee_coefficient = self => self.coefficient();
 export const linearFee_new = coefficient => constant => CSL.LinearFee.new(coefficient, constant);
 
 // MIRToStakeCredentials
-export const mIRToStakeCredentials_free = self => () => self.free();
-export const mIRToStakeCredentials_toBytes = self => self.to_bytes();
-export const mIRToStakeCredentials_fromBytes = bytes => CSL.MIRToStakeCredentials.from_bytes(bytes);
-export const mIRToStakeCredentials_toHex = self => self.to_hex();
-export const mIRToStakeCredentials_fromHex = hex_str => CSL.MIRToStakeCredentials.from_hex(hex_str);
-export const mIRToStakeCredentials_toJson = self => self.to_json();
-export const mIRToStakeCredentials_toJsValue = self => self.to_js_value();
-export const mIRToStakeCredentials_fromJson = json => CSL.MIRToStakeCredentials.from_json(json);
-export const mIRToStakeCredentials_new = CSL.MIRToStakeCredentials.new();
-export const mIRToStakeCredentials_len = self => self.len();
-export const mIRToStakeCredentials_insert = self => cred => delta => self.insert(cred, delta);
-export const mIRToStakeCredentials_get = self => cred => self.get(cred);
-export const mIRToStakeCredentials_keys = self => self.keys();
+export const mirToStakeCredentials_free = self => () => self.free();
+export const mirToStakeCredentials_toBytes = self => self.to_bytes();
+export const mirToStakeCredentials_fromBytes = bytes => CSL.MIRToStakeCredentials.from_bytes(bytes);
+export const mirToStakeCredentials_toHex = self => self.to_hex();
+export const mirToStakeCredentials_fromHex = hex_str => CSL.MIRToStakeCredentials.from_hex(hex_str);
+export const mirToStakeCredentials_toJson = self => self.to_json();
+export const mirToStakeCredentials_toJsValue = self => self.to_js_value();
+export const mirToStakeCredentials_fromJson = json => CSL.MIRToStakeCredentials.from_json(json);
+export const mirToStakeCredentials_new = () => CSL.MIRToStakeCredentials.new();
+export const mirToStakeCredentials_len = self => () => self.len();
+export const mirToStakeCredentials_insert = self => cred => delta => () => self.insert(cred, delta);
+export const mirToStakeCredentials_get = self => cred => () => self.get(cred);
+export const mirToStakeCredentials_keys = self => () => self.keys();
 
 // MetadataList
 export const metadataList_free = self => () => self.free();
@@ -662,9 +662,9 @@ export const metadataList_toBytes = self => self.to_bytes();
 export const metadataList_fromBytes = bytes => CSL.MetadataList.from_bytes(bytes);
 export const metadataList_toHex = self => self.to_hex();
 export const metadataList_fromHex = hex_str => CSL.MetadataList.from_hex(hex_str);
-export const metadataList_new = CSL.MetadataList.new();
-export const metadataList_len = self => self.len();
-export const metadataList_get = self => index => self.get(index);
+export const metadataList_new = () => CSL.MetadataList.new();
+export const metadataList_len = self => () => self.len();
+export const metadataList_get = self => index => () => self.get(index);
 export const metadataList_add = self => elem => () => self.add(elem);
 
 // MetadataMap
@@ -673,16 +673,16 @@ export const metadataMap_toBytes = self => self.to_bytes();
 export const metadataMap_fromBytes = bytes => CSL.MetadataMap.from_bytes(bytes);
 export const metadataMap_toHex = self => self.to_hex();
 export const metadataMap_fromHex = hex_str => CSL.MetadataMap.from_hex(hex_str);
-export const metadataMap_new = CSL.MetadataMap.new();
+export const metadataMap_new = () => CSL.MetadataMap.new();
 export const metadataMap_len = self => self.len();
-export const metadataMap_insert = self => key => value => self.insert(key, value);
-export const metadataMap_insertStr = self => key => value => self.insert_str(key, value);
-export const metadataMap_insertI32 = self => key => value => self.insert_i32(key, value);
-export const metadataMap_get = self => key => self.get(key);
-export const metadataMap_getStr = self => key => self.get_str(key);
-export const metadataMap_getI32 = self => key => self.get_i32(key);
-export const metadataMap_has = self => key => self.has(key);
-export const metadataMap_keys = self => self.keys();
+export const metadataMap_insert = self => key => value => () => self.insert(key, value);
+export const metadataMap_insertStr = self => key => value => () => self.insert_str(key, value);
+export const metadataMap_insertI32 = self => key => value => () => self.insert_i32(key, value);
+export const metadataMap_get = self => key => () => self.get(key);
+export const metadataMap_getStr = self => key => () => self.get_str(key);
+export const metadataMap_getI32 = self => key => () => self.get_i32(key);
+export const metadataMap_has = self => key => () => self.has(key);
+export const metadataMap_keys = self => () => self.keys();
 
 // Mint
 export const mint_free = self => () => self.free();
@@ -693,23 +693,23 @@ export const mint_fromHex = hex_str => CSL.Mint.from_hex(hex_str);
 export const mint_toJson = self => self.to_json();
 export const mint_toJsValue = self => self.to_js_value();
 export const mint_fromJson = json => CSL.Mint.from_json(json);
-export const mint_new = CSL.Mint.new();
-export const mint_newFromEntry = key => value => CSL.Mint.new_from_entry(key, value);
-export const mint_len = self => self.len();
-export const mint_insert = self => key => value => self.insert(key, value);
-export const mint_get = self => key => self.get(key);
-export const mint_keys = self => self.keys();
-export const mint_asPositiveMultiasset = self => self.as_positive_multiasset();
-export const mint_asNegativeMultiasset = self => self.as_negative_multiasset();
+export const mint_new = () => CSL.Mint.new();
+export const mint_newFromEntry = key => value => () => CSL.Mint.new_from_entry(key, value);
+export const mint_len = self => () => self.len();
+export const mint_insert = self => key => value => () => self.insert(key, value);
+export const mint_get = self => key => () => self.get(key);
+export const mint_keys = self => () => self.keys();
+export const mint_asPositiveMultiasset = self => () => self.as_positive_multiasset();
+export const mint_asNegativeMultiasset = self => () => self.as_negative_multiasset();
 
 // MintAssets
 export const mintAssets_free = self => () => self.free();
-export const mintAssets_new = CSL.MintAssets.new();
+export const mintAssets_new = () => CSL.MintAssets.new();
 export const mintAssets_newFromEntry = key => value => CSL.MintAssets.new_from_entry(key, value);
-export const mintAssets_len = self => self.len();
-export const mintAssets_insert = self => key => value => self.insert(key, value);
-export const mintAssets_get = self => key => self.get(key);
-export const mintAssets_keys = self => self.keys();
+export const mintAssets_len = self => () => self.len();
+export const mintAssets_insert = self => key => value => () => self.insert(key, value);
+export const mintAssets_get = self => key => () => self.get(key);
+export const mintAssets_keys = self => () => self.keys();
 
 // MoveInstantaneousReward
 export const moveInstantaneousReward_free = self => () => self.free();
@@ -748,14 +748,14 @@ export const multiAsset_fromHex = hex_str => CSL.MultiAsset.from_hex(hex_str);
 export const multiAsset_toJson = self => self.to_json();
 export const multiAsset_toJsValue = self => self.to_js_value();
 export const multiAsset_fromJson = json => CSL.MultiAsset.from_json(json);
-export const multiAsset_new = CSL.MultiAsset.new();
-export const multiAsset_len = self => self.len();
+export const multiAsset_new = () => CSL.MultiAsset.new();
+export const multiAsset_len = self => () => self.len();
 export const multiAsset_insert = self => policy_id => assets => self.insert(policy_id, assets);
-export const multiAsset_get = self => policy_id => self.get(policy_id);
-export const multiAsset_setAsset = self => policy_id => asset_name => value => self.set_asset(policy_id, asset_name, value);
-export const multiAsset_getAsset = self => policy_id => asset_name => self.get_asset(policy_id, asset_name);
-export const multiAsset_keys = self => self.keys();
-export const multiAsset_sub = self => rhs_ma => self.sub(rhs_ma);
+export const multiAsset_get = self => policy_id => () => self.get(policy_id);
+export const multiAsset_setAsset = self => policy_id => asset_name => value => () => self.set_asset(policy_id, asset_name, value);
+export const multiAsset_getAsset = self => policy_id => asset_name => () => self.get_asset(policy_id, asset_name);
+export const multiAsset_keys = self => () => self.keys();
+export const multiAsset_sub = self => rhs_ma => () => self.sub(rhs_ma);
 
 // MultiHostName
 export const multiHostName_free = self => () => self.free();
@@ -796,9 +796,9 @@ export const nativeScript_getRequiredSigners = self => self.get_required_signers
 
 // NativeScripts
 export const nativeScripts_free = self => () => self.free();
-export const nativeScripts_new = CSL.NativeScripts.new();
-export const nativeScripts_len = self => self.len();
-export const nativeScripts_get = self => index => self.get(index);
+export const nativeScripts_new = () => CSL.NativeScripts.new();
+export const nativeScripts_len = self => () => self.len();
+export const nativeScripts_get = self => index => () => self.get(index);
 export const nativeScripts_add = self => elem => () => self.add(elem);
 
 // NetworkId
@@ -881,9 +881,9 @@ export const plutusList_fromHex = hex_str => CSL.PlutusList.from_hex(hex_str);
 export const plutusList_toJson = self => self.to_json();
 export const plutusList_toJsValue = self => self.to_js_value();
 export const plutusList_fromJson = json => CSL.PlutusList.from_json(json);
-export const plutusList_new = CSL.PlutusList.new();
-export const plutusList_len = self => self.len();
-export const plutusList_get = self => index => self.get(index);
+export const plutusList_new = () => CSL.PlutusList.new();
+export const plutusList_len = self => () => self.len();
+export const plutusList_get = self => index => () => self.get(index);
 export const plutusList_add = self => elem => () => self.add(elem);
 
 // PlutusMap
@@ -895,11 +895,11 @@ export const plutusMap_fromHex = hex_str => CSL.PlutusMap.from_hex(hex_str);
 export const plutusMap_toJson = self => self.to_json();
 export const plutusMap_toJsValue = self => self.to_js_value();
 export const plutusMap_fromJson = json => CSL.PlutusMap.from_json(json);
-export const plutusMap_new = CSL.PlutusMap.new();
-export const plutusMap_len = self => self.len();
-export const plutusMap_insert = self => key => value => self.insert(key, value);
-export const plutusMap_get = self => key => self.get(key);
-export const plutusMap_keys = self => self.keys();
+export const plutusMap_new = () => CSL.PlutusMap.new();
+export const plutusMap_len = self => () => self.len();
+export const plutusMap_insert = self => key => value => () => self.insert(key, value);
+export const plutusMap_get = self => key => () => self.get(key);
+export const plutusMap_keys = self => () => self.keys();
 
 // PlutusScript
 export const plutusScript_free = self => () => self.free();
@@ -930,9 +930,9 @@ export const plutusScripts_fromHex = hex_str => CSL.PlutusScripts.from_hex(hex_s
 export const plutusScripts_toJson = self => self.to_json();
 export const plutusScripts_toJsValue = self => self.to_js_value();
 export const plutusScripts_fromJson = json => CSL.PlutusScripts.from_json(json);
-export const plutusScripts_new = CSL.PlutusScripts.new();
-export const plutusScripts_len = self => self.len();
-export const plutusScripts_get = self => index => self.get(index);
+export const plutusScripts_new = () => CSL.PlutusScripts.new();
+export const plutusScripts_len = self => () => self.len();
+export const plutusScripts_get = self => index => () => self.get(index);
 export const plutusScripts_add = self => elem => () => self.add(elem);
 
 // PlutusWitness
@@ -945,9 +945,9 @@ export const plutusWitness_redeemer = self => self.redeemer();
 
 // PlutusWitnesses
 export const plutusWitnesses_free = self => () => self.free();
-export const plutusWitnesses_new = CSL.PlutusWitnesses.new();
-export const plutusWitnesses_len = self => self.len();
-export const plutusWitnesses_get = self => index => self.get(index);
+export const plutusWitnesses_new = () => CSL.PlutusWitnesses.new();
+export const plutusWitnesses_len = self => () => self.len();
+export const plutusWitnesses_get = self => index => () => self.get(index);
 export const plutusWitnesses_add = self => elem => () => self.add(elem);
 
 // Pointer
@@ -1059,11 +1059,11 @@ export const proposedProtocolParameterUpdates_fromHex = hex_str => CSL.ProposedP
 export const proposedProtocolParameterUpdates_toJson = self => self.to_json();
 export const proposedProtocolParameterUpdates_toJsValue = self => self.to_js_value();
 export const proposedProtocolParameterUpdates_fromJson = json => CSL.ProposedProtocolParameterUpdates.from_json(json);
-export const proposedProtocolParameterUpdates_new = CSL.ProposedProtocolParameterUpdates.new();
-export const proposedProtocolParameterUpdates_len = self => self.len();
-export const proposedProtocolParameterUpdates_insert = self => key => value => self.insert(key, value);
-export const proposedProtocolParameterUpdates_get = self => key => self.get(key);
-export const proposedProtocolParameterUpdates_keys = self => self.keys();
+export const proposedProtocolParameterUpdates_new = () => CSL.ProposedProtocolParameterUpdates.new();
+export const proposedProtocolParameterUpdates_len = self => () => self.len();
+export const proposedProtocolParameterUpdates_insert = self => key => value => () => self.insert(key, value);
+export const proposedProtocolParameterUpdates_get = self => key => () => self.get(key);
+export const proposedProtocolParameterUpdates_keys = self => () => self.keys();
 
 // ProtocolParamUpdate
 export const protocolParamUpdate_free = self => () => self.free();
@@ -1150,7 +1150,7 @@ export const publicKey_fromHex = hex_str => CSL.PublicKey.from_hex(hex_str);
 export const publicKeys_free = self => () => self.free();
 export const publicKeys_constructor = self => self.constructor();
 export const publicKeys_size = self => self.size();
-export const publicKeys_get = self => index => self.get(index);
+export const publicKeys_get = self => index => () => self.get(index);
 export const publicKeys_add = self => key => () => self.add(key);
 
 // Redeemer
@@ -1192,9 +1192,9 @@ export const redeemers_fromHex = hex_str => CSL.Redeemers.from_hex(hex_str);
 export const redeemers_toJson = self => self.to_json();
 export const redeemers_toJsValue = self => self.to_js_value();
 export const redeemers_fromJson = json => CSL.Redeemers.from_json(json);
-export const redeemers_new = CSL.Redeemers.new();
-export const redeemers_len = self => self.len();
-export const redeemers_get = self => index => self.get(index);
+export const redeemers_new = () => CSL.Redeemers.new();
+export const redeemers_len = self => () => self.len();
+export const redeemers_get = self => index => () => self.get(index);
 export const redeemers_add = self => elem => () => self.add(elem);
 export const redeemers_totalExUnits = self => self.total_ex_units();
 
@@ -1224,9 +1224,9 @@ export const relays_fromHex = hex_str => CSL.Relays.from_hex(hex_str);
 export const relays_toJson = self => self.to_json();
 export const relays_toJsValue = self => self.to_js_value();
 export const relays_fromJson = json => CSL.Relays.from_json(json);
-export const relays_new = CSL.Relays.new();
-export const relays_len = self => self.len();
-export const relays_get = self => index => self.get(index);
+export const relays_new = () => CSL.Relays.new();
+export const relays_len = self => () => self.len();
+export const relays_get = self => index => () => self.get(index);
 export const relays_add = self => elem => () => self.add(elem);
 
 // RewardAddress
@@ -1245,9 +1245,9 @@ export const rewardAddresses_fromHex = hex_str => CSL.RewardAddresses.from_hex(h
 export const rewardAddresses_toJson = self => self.to_json();
 export const rewardAddresses_toJsValue = self => self.to_js_value();
 export const rewardAddresses_fromJson = json => CSL.RewardAddresses.from_json(json);
-export const rewardAddresses_new = CSL.RewardAddresses.new();
-export const rewardAddresses_len = self => self.len();
-export const rewardAddresses_get = self => index => self.get(index);
+export const rewardAddresses_new = () => CSL.RewardAddresses.new();
+export const rewardAddresses_len = self => () => self.len();
+export const rewardAddresses_get = self => index => () => self.get(index);
 export const rewardAddresses_add = self => elem => () => self.add(elem);
 
 // ScriptAll
@@ -1301,9 +1301,9 @@ export const scriptHashes_fromHex = hex_str => CSL.ScriptHashes.from_hex(hex_str
 export const scriptHashes_toJson = self => self.to_json();
 export const scriptHashes_toJsValue = self => self.to_js_value();
 export const scriptHashes_fromJson = json => CSL.ScriptHashes.from_json(json);
-export const scriptHashes_new = CSL.ScriptHashes.new();
-export const scriptHashes_len = self => self.len();
-export const scriptHashes_get = self => index => self.get(index);
+export const scriptHashes_new = () => CSL.ScriptHashes.new();
+export const scriptHashes_len = self => () => self.len();
+export const scriptHashes_get = self => index => () => self.get(index);
 export const scriptHashes_add = self => elem => () => self.add(elem);
 
 // ScriptNOfK
@@ -1398,9 +1398,9 @@ export const stakeCredentials_fromHex = hex_str => CSL.StakeCredentials.from_hex
 export const stakeCredentials_toJson = self => self.to_json();
 export const stakeCredentials_toJsValue = self => self.to_js_value();
 export const stakeCredentials_fromJson = json => CSL.StakeCredentials.from_json(json);
-export const stakeCredentials_new = CSL.StakeCredentials.new();
-export const stakeCredentials_len = self => self.len();
-export const stakeCredentials_get = self => index => self.get(index);
+export const stakeCredentials_new = () => CSL.StakeCredentials.new();
+export const stakeCredentials_len = self => () => self.len();
+export const stakeCredentials_get = self => index => () => self.get(index);
 export const stakeCredentials_add = self => elem => () => self.add(elem);
 
 // StakeDelegation
@@ -1442,9 +1442,9 @@ export const stakeRegistration_new = stake_credential => CSL.StakeRegistration.n
 
 // Strings
 export const strings_free = self => () => self.free();
-export const strings_new = CSL.Strings.new();
-export const strings_len = self => self.len();
-export const strings_get = self => index => self.get(index);
+export const strings_new = () => CSL.Strings.new();
+export const strings_len = self => () => self.len();
+export const strings_get = self => index => () => self.get(index);
 export const strings_add = self => elem => () => self.add(elem);
 
 // TimelockExpiry
@@ -1500,9 +1500,9 @@ export const txBodies_fromHex = hex_str => CSL.TransactionBodies.from_hex(hex_st
 export const txBodies_toJson = self => self.to_json();
 export const txBodies_toJsValue = self => self.to_js_value();
 export const txBodies_fromJson = json => CSL.TransactionBodies.from_json(json);
-export const txBodies_new = CSL.TransactionBodies.new();
-export const txBodies_len = self => self.len();
-export const txBodies_get = self => index => self.get(index);
+export const txBodies_new = () => CSL.TransactionBodies.new();
+export const txBodies_len = self => () => self.len();
+export const txBodies_get = self => index => () => self.get(index);
 export const txBodies_add = self => elem => () => self.add(elem);
 
 // TransactionBody
@@ -1569,14 +1569,14 @@ export const txBuilder_addNativeScriptIn = self => script => input => amount => 
 export const txBuilder_addPlutusScriptIn = self => witness => input => amount => () => self.add_plutus_script_input(witness, input, amount);
 export const txBuilder_addBootstrapIn = self => hash => input => amount => () => self.add_bootstrap_input(hash, input, amount);
 export const txBuilder_addIn = self => address => input => amount => () => self.add_input(address, input, amount);
-export const txBuilder_countMissingInScripts = self => self.count_missing_input_scripts();
-export const txBuilder_addRequiredNativeInScripts = self => scripts => self.add_required_native_input_scripts(scripts);
-export const txBuilder_addRequiredPlutusInScripts = self => scripts => self.add_required_plutus_input_scripts(scripts);
-export const txBuilder_getNativeInScripts = self => self.get_native_input_scripts();
-export const txBuilder_getPlutusInScripts = self => self.get_plutus_input_scripts();
-export const txBuilder_feeForIn = self => address => input => amount => self.fee_for_input(address, input, amount);
+export const txBuilder_countMissingInScripts = self => () => self.count_missing_input_scripts();
+export const txBuilder_addRequiredNativeInScripts = self => scripts => () => self.add_required_native_input_scripts(scripts);
+export const txBuilder_addRequiredPlutusInScripts = self => scripts => () => self.add_required_plutus_input_scripts(scripts);
+export const txBuilder_getNativeInScripts = self => () => self.get_native_input_scripts();
+export const txBuilder_getPlutusInScripts = self => () => self.get_plutus_input_scripts();
+export const txBuilder_feeForIn = self => address => input => amount => () => self.fee_for_input(address, input, amount);
 export const txBuilder_addOut = self => output => () => self.add_output(output);
-export const txBuilder_feeForOut = self => output => self.fee_for_output(output);
+export const txBuilder_feeForOut = self => output => () => self.fee_for_output(output);
 export const txBuilder_setFee = self => fee => () => self.set_fee(fee);
 export const txBuilder_setTtl = self => ttl => () => self.set_ttl(ttl);
 export const txBuilder_setTtlBignum = self => ttl => () => self.set_ttl_bignum(ttl);
@@ -1584,39 +1584,39 @@ export const txBuilder_setValidityStartInterval = self => validity_start_interva
 export const txBuilder_setValidityStartIntervalBignum = self => validity_start_interval => () => self.set_validity_start_interval_bignum(validity_start_interval);
 export const txBuilder_setCerts = self => certs => () => self.set_certs(certs);
 export const txBuilder_setWithdrawals = self => withdrawals => () => self.set_withdrawals(withdrawals);
-export const txBuilder_getAuxiliaryData = self => self.get_auxiliary_data();
+export const txBuilder_getAuxiliaryData = self => () => self.get_auxiliary_data();
 export const txBuilder_setAuxiliaryData = self => auxiliary_data => () => self.set_auxiliary_data(auxiliary_data);
 export const txBuilder_setMetadata = self => metadata => () => self.set_metadata(metadata);
 export const txBuilder_addMetadatum = self => key => val => () => self.add_metadatum(key, val);
 export const txBuilder_addJsonMetadatum = self => key => val => () => self.add_json_metadatum(key, val);
 export const txBuilder_addJsonMetadatumWithSchema = self => key => val => schema => () => self.add_json_metadatum_with_schema(key, val, schema);
 export const txBuilder_setMint = self => mint => mint_scripts => () => self.set_mint(mint, mint_scripts);
-export const txBuilder_getMint = self => self.get_mint();
-export const txBuilder_getMintScripts = self => self.get_mint_scripts();
+export const txBuilder_getMint = self => () => self.get_mint();
+export const txBuilder_getMintScripts = self => () => self.get_mint_scripts();
 export const txBuilder_setMintAsset = self => policy_script => mint_assets => () => self.set_mint_asset(policy_script, mint_assets);
 export const txBuilder_addMintAsset = self => policy_script => asset_name => amount => () => self.add_mint_asset(policy_script, asset_name, amount);
 export const txBuilder_addMintAssetAndOut = self => policy_script => asset_name => amount => output_builder => output_coin => () => self.add_mint_asset_and_output(policy_script, asset_name, amount, output_builder, output_coin);
 export const txBuilder_addMintAssetAndOutMinRequiredCoin = self => policy_script => asset_name => amount => output_builder => () => self.add_mint_asset_and_output_min_required_coin(policy_script, asset_name, amount, output_builder);
 export const txBuilder_new = cfg => () => CSL.TransactionBuilder.new(cfg);
-export const txBuilder_getReferenceIns = self => self.get_reference_inputs();
-export const txBuilder_getExplicitIn = self => self.get_explicit_input();
-export const txBuilder_getImplicitIn = self => self.get_implicit_input();
-export const txBuilder_getTotalIn = self => self.get_total_input();
-export const txBuilder_getTotalOut = self => self.get_total_output();
-export const txBuilder_getExplicitOut = self => self.get_explicit_output();
-export const txBuilder_getDeposit = self => self.get_deposit();
-export const txBuilder_getFeeIfSet = self => self.get_fee_if_set();
-export const txBuilder_addChangeIfNeeded = self => address => self.add_change_if_needed(address);
+export const txBuilder_getReferenceIns = self => () => self.get_reference_inputs();
+export const txBuilder_getExplicitIn = self => () => self.get_explicit_input();
+export const txBuilder_getImplicitIn = self => () => self.get_implicit_input();
+export const txBuilder_getTotalIn = self => () => self.get_total_input();
+export const txBuilder_getTotalOut = self => () => self.get_total_output();
+export const txBuilder_getExplicitOut = self => () => self.get_explicit_output();
+export const txBuilder_getDeposit = self => () => self.get_deposit();
+export const txBuilder_getFeeIfSet = self => () => self.get_fee_if_set();
+export const txBuilder_addChangeIfNeeded = self => address => () => self.add_change_if_needed(address);
 export const txBuilder_calcScriptDataHash = self => cost_models => () => self.calc_script_data_hash(cost_models);
 export const txBuilder_setScriptDataHash = self => hash => () => self.set_script_data_hash(hash);
 export const txBuilder_removeScriptDataHash = self => () => self.remove_script_data_hash();
 export const txBuilder_addRequiredSigner = self => key => () => self.add_required_signer(key);
-export const txBuilder_fullSize = self => self.full_size();
-export const txBuilder_outSizes = self => self.output_sizes();
-export const txBuilder_build = self => self.build();
-export const txBuilder_buildTx = self => self.build_tx();
-export const txBuilder_buildTxUnsafe = self => self.build_tx_unsafe();
-export const txBuilder_minFee = self => self.min_fee();
+export const txBuilder_fullSize = self => () => self.full_size();
+export const txBuilder_outSizes = self => () => self.output_sizes();
+export const txBuilder_build = self => () => self.build();
+export const txBuilder_buildTx = self => () => self.build_tx();
+export const txBuilder_buildTxUnsafe = self => () => self.build_tx_unsafe();
+export const txBuilder_minFee = self => () => self.min_fee();
 
 // TransactionBuilderConfig
 export const txBuilderConfig_free = self => () => self.free();
@@ -1666,9 +1666,9 @@ export const txIns_fromHex = hex_str => CSL.TransactionInputs.from_hex(hex_str);
 export const txIns_toJson = self => self.to_json();
 export const txIns_toJsValue = self => self.to_js_value();
 export const txIns_fromJson = json => CSL.TransactionInputs.from_json(json);
-export const txIns_new = CSL.TransactionInputs.new();
-export const txIns_len = self => self.len();
-export const txIns_get = self => index => self.get(index);
+export const txIns_new = () => CSL.TransactionInputs.new();
+export const txIns_len = self => () => self.len();
+export const txIns_get = self => index => () => self.get(index);
 export const txIns_add = self => elem => () => self.add(elem);
 export const txIns_toOption = self => self.to_option();
 
@@ -1696,9 +1696,9 @@ export const txMetadatumLabels_toBytes = self => self.to_bytes();
 export const txMetadatumLabels_fromBytes = bytes => CSL.TransactionMetadatumLabels.from_bytes(bytes);
 export const txMetadatumLabels_toHex = self => self.to_hex();
 export const txMetadatumLabels_fromHex = hex_str => CSL.TransactionMetadatumLabels.from_hex(hex_str);
-export const txMetadatumLabels_new = CSL.TransactionMetadatumLabels.new();
-export const txMetadatumLabels_len = self => self.len();
-export const txMetadatumLabels_get = self => index => self.get(index);
+export const txMetadatumLabels_new = () => CSL.TransactionMetadatumLabels.new();
+export const txMetadatumLabels_len = self => () => self.len();
+export const txMetadatumLabels_get = self => index => () => self.get(index);
 export const txMetadatumLabels_add = self => elem => () => self.add(elem);
 
 // TransactionOutput
@@ -1750,9 +1750,9 @@ export const txOuts_fromHex = hex_str => CSL.TransactionOutputs.from_hex(hex_str
 export const txOuts_toJson = self => self.to_json();
 export const txOuts_toJsValue = self => self.to_js_value();
 export const txOuts_fromJson = json => CSL.TransactionOutputs.from_json(json);
-export const txOuts_new = CSL.TransactionOutputs.new();
-export const txOuts_len = self => self.len();
-export const txOuts_get = self => index => self.get(index);
+export const txOuts_new = () => CSL.TransactionOutputs.new();
+export const txOuts_len = self => () => self.len();
+export const txOuts_get = self => index => () => self.get(index);
 export const txOuts_add = self => elem => () => self.add(elem);
 
 // TransactionUnspentOutput
@@ -1773,9 +1773,9 @@ export const txUnspentOuts_free = self => () => self.free();
 export const txUnspentOuts_toJson = self => self.to_json();
 export const txUnspentOuts_toJsValue = self => self.to_js_value();
 export const txUnspentOuts_fromJson = json => CSL.TransactionUnspentOutputs.from_json(json);
-export const txUnspentOuts_new = CSL.TransactionUnspentOutputs.new();
-export const txUnspentOuts_len = self => self.len();
-export const txUnspentOuts_get = self => index => self.get(index);
+export const txUnspentOuts_new = () => CSL.TransactionUnspentOutputs.new();
+export const txUnspentOuts_len = self => () => self.len();
+export const txUnspentOuts_get = self => index => () => self.get(index);
 export const txUnspentOuts_add = self => elem => () => self.add(elem);
 
 // TransactionWitnessSet
@@ -1788,18 +1788,18 @@ export const txWitnessSet_toJson = self => self.to_json();
 export const txWitnessSet_toJsValue = self => self.to_js_value();
 export const txWitnessSet_fromJson = json => CSL.TransactionWitnessSet.from_json(json);
 export const txWitnessSet_setVkeys = self => vkeys => () => self.set_vkeys(vkeys);
-export const txWitnessSet_vkeys = self => self.vkeys();
+export const txWitnessSet_vkeys = self => () => self.vkeys();
 export const txWitnessSet_setNativeScripts = self => native_scripts => () => self.set_native_scripts(native_scripts);
-export const txWitnessSet_nativeScripts = self => self.native_scripts();
+export const txWitnessSet_nativeScripts = self => () => self.native_scripts();
 export const txWitnessSet_setBootstraps = self => bootstraps => () => self.set_bootstraps(bootstraps);
-export const txWitnessSet_bootstraps = self => self.bootstraps();
+export const txWitnessSet_bootstraps = self => () => self.bootstraps();
 export const txWitnessSet_setPlutusScripts = self => plutus_scripts => () => self.set_plutus_scripts(plutus_scripts);
-export const txWitnessSet_plutusScripts = self => self.plutus_scripts();
+export const txWitnessSet_plutusScripts = self => () => self.plutus_scripts();
 export const txWitnessSet_setPlutusData = self => plutus_data => () => self.set_plutus_data(plutus_data);
-export const txWitnessSet_plutusData = self => self.plutus_data();
+export const txWitnessSet_plutusData = self => () => self.plutus_data();
 export const txWitnessSet_setRedeemers = self => redeemers => () => self.set_redeemers(redeemers);
-export const txWitnessSet_redeemers = self => self.redeemers();
-export const txWitnessSet_new = CSL.TransactionWitnessSet.new();
+export const txWitnessSet_redeemers = self => () => self.redeemers();
+export const txWitnessSet_new = () => CSL.TransactionWitnessSet.new();
 
 // TransactionWitnessSets
 export const txWitnessSets_free = self => () => self.free();
@@ -1810,9 +1810,9 @@ export const txWitnessSets_fromHex = hex_str => CSL.TransactionWitnessSets.from_
 export const txWitnessSets_toJson = self => self.to_json();
 export const txWitnessSets_toJsValue = self => self.to_js_value();
 export const txWitnessSets_fromJson = json => CSL.TransactionWitnessSets.from_json(json);
-export const txWitnessSets_new = CSL.TransactionWitnessSets.new();
-export const txWitnessSets_len = self => self.len();
-export const txWitnessSets_get = self => index => self.get(index);
+export const txWitnessSets_new = () => CSL.TransactionWitnessSets.new();
+export const txWitnessSets_len = self => () => self.len();
+export const txWitnessSets_get = self => index => () => self.get(index);
 export const txWitnessSets_add = self => elem => () => self.add(elem);
 
 // TxBuilderConstants
@@ -1830,30 +1830,30 @@ export const txInsBuilder_addNativeScriptIn = self => script => input => amount 
 export const txInsBuilder_addPlutusScriptIn = self => witness => input => amount => () => self.add_plutus_script_input(witness, input, amount);
 export const txInsBuilder_addBootstrapIn = self => hash => input => amount => () => self.add_bootstrap_input(hash, input, amount);
 export const txInsBuilder_addIn = self => address => input => amount => () => self.add_input(address, input, amount);
-export const txInsBuilder_countMissingInScripts = self => self.count_missing_input_scripts();
-export const txInsBuilder_addRequiredNativeInScripts = self => scripts => self.add_required_native_input_scripts(scripts);
-export const txInsBuilder_addRequiredPlutusInScripts = self => scripts => self.add_required_plutus_input_scripts(scripts);
-export const txInsBuilder_getRefIns = self => self.get_ref_inputs();
-export const txInsBuilder_getNativeInScripts = self => self.get_native_input_scripts();
-export const txInsBuilder_getPlutusInScripts = self => self.get_plutus_input_scripts();
-export const txInsBuilder_len = self => self.len();
+export const txInsBuilder_countMissingInScripts = self => () => self.count_missing_input_scripts();
+export const txInsBuilder_addRequiredNativeInScripts = self => scripts => () => self.add_required_native_input_scripts(scripts);
+export const txInsBuilder_addRequiredPlutusInScripts = self => scripts => () => self.add_required_plutus_input_scripts(scripts);
+export const txInsBuilder_getRefIns = self => () => self.get_ref_inputs();
+export const txInsBuilder_getNativeInScripts = self => () => self.get_native_input_scripts();
+export const txInsBuilder_getPlutusInScripts = self => () => self.get_plutus_input_scripts();
+export const txInsBuilder_len = self => () => self.len();
 export const txInsBuilder_addRequiredSigner = self => key => () => self.add_required_signer(key);
 export const txInsBuilder_addRequiredSigners = self => keys => () => self.add_required_signers(keys);
-export const txInsBuilder_totalValue = self => self.total_value();
-export const txInsBuilder_ins = self => self.inputs();
-export const txInsBuilder_insOption = self => self.inputs_option();
+export const txInsBuilder_totalValue = self => () => self.total_value();
+export const txInsBuilder_ins = self => () => self.inputs();
+export const txInsBuilder_insOption = self => () => self.inputs_option();
 
 // URL
-export const uRL_free = self => () => self.free();
-export const uRL_toBytes = self => self.to_bytes();
-export const uRL_fromBytes = bytes => CSL.URL.from_bytes(bytes);
-export const uRL_toHex = self => self.to_hex();
-export const uRL_fromHex = hex_str => CSL.URL.from_hex(hex_str);
-export const uRL_toJson = self => self.to_json();
-export const uRL_toJsValue = self => self.to_js_value();
-export const uRL_fromJson = json => CSL.URL.from_json(json);
-export const uRL_new = url => CSL.URL.new(url);
-export const uRL_url = self => self.url();
+export const url_free = self => () => self.free();
+export const url_toBytes = self => self.to_bytes();
+export const url_fromBytes = bytes => CSL.URL.from_bytes(bytes);
+export const url_toHex = self => self.to_hex();
+export const url_fromHex = hex_str => CSL.URL.from_hex(hex_str);
+export const url_toJson = self => self.to_json();
+export const url_toJsValue = self => self.to_js_value();
+export const url_fromJson = json => CSL.URL.from_json(json);
+export const url_new = url => CSL.URL.new(url);
+export const url_url = self => self.url();
 
 // UnitInterval
 export const unitInterval_free = self => () => self.free();
@@ -1882,35 +1882,35 @@ export const update_epoch = self => self.epoch();
 export const update_new = proposed_protocol_parameter_updates => epoch => CSL.Update.new(proposed_protocol_parameter_updates, epoch);
 
 // VRFCert
-export const vRFCert_free = self => () => self.free();
-export const vRFCert_toBytes = self => self.to_bytes();
-export const vRFCert_fromBytes = bytes => CSL.VRFCert.from_bytes(bytes);
-export const vRFCert_toHex = self => self.to_hex();
-export const vRFCert_fromHex = hex_str => CSL.VRFCert.from_hex(hex_str);
-export const vRFCert_toJson = self => self.to_json();
-export const vRFCert_toJsValue = self => self.to_js_value();
-export const vRFCert_fromJson = json => CSL.VRFCert.from_json(json);
-export const vRFCert_out = self => self.output();
-export const vRFCert_proof = self => self.proof();
-export const vRFCert_new = output => proof => CSL.VRFCert.new(output, proof);
+export const vrfCert_free = self => () => self.free();
+export const vrfCert_toBytes = self => self.to_bytes();
+export const vrfCert_fromBytes = bytes => CSL.VRFCert.from_bytes(bytes);
+export const vrfCert_toHex = self => self.to_hex();
+export const vrfCert_fromHex = hex_str => CSL.VRFCert.from_hex(hex_str);
+export const vrfCert_toJson = self => self.to_json();
+export const vrfCert_toJsValue = self => self.to_js_value();
+export const vrfCert_fromJson = json => CSL.VRFCert.from_json(json);
+export const vrfCert_out = self => self.output();
+export const vrfCert_proof = self => self.proof();
+export const vrfCert_new = output => proof => CSL.VRFCert.new(output, proof);
 
 // VRFKeyHash
-export const vRFKeyHash_free = self => () => self.free();
-export const vRFKeyHash_fromBytes = bytes => CSL.VRFKeyHash.from_bytes(bytes);
-export const vRFKeyHash_toBytes = self => self.to_bytes();
-export const vRFKeyHash_toBech32 = self => prefix => self.to_bech32(prefix);
-export const vRFKeyHash_fromBech32 = bech_str => CSL.VRFKeyHash.from_bech32(bech_str);
-export const vRFKeyHash_toHex = self => self.to_hex();
-export const vRFKeyHash_fromHex = hex => CSL.VRFKeyHash.from_hex(hex);
+export const vrfKeyHash_free = self => () => self.free();
+export const vrfKeyHash_fromBytes = bytes => CSL.VRFKeyHash.from_bytes(bytes);
+export const vrfKeyHash_toBytes = self => self.to_bytes();
+export const vrfKeyHash_toBech32 = self => prefix => self.to_bech32(prefix);
+export const vrfKeyHash_fromBech32 = bech_str => CSL.VRFKeyHash.from_bech32(bech_str);
+export const vrfKeyHash_toHex = self => self.to_hex();
+export const vrfKeyHash_fromHex = hex => CSL.VRFKeyHash.from_hex(hex);
 
 // VRFVKey
-export const vRFVKey_free = self => () => self.free();
-export const vRFVKey_fromBytes = bytes => CSL.VRFVKey.from_bytes(bytes);
-export const vRFVKey_toBytes = self => self.to_bytes();
-export const vRFVKey_toBech32 = self => prefix => self.to_bech32(prefix);
-export const vRFVKey_fromBech32 = bech_str => CSL.VRFVKey.from_bech32(bech_str);
-export const vRFVKey_toHex = self => self.to_hex();
-export const vRFVKey_fromHex = hex => CSL.VRFVKey.from_hex(hex);
+export const vrfvKey_free = self => () => self.free();
+export const vrfvKey_fromBytes = bytes => CSL.VRFVKey.from_bytes(bytes);
+export const vrfvKey_toBytes = self => self.to_bytes();
+export const vrfvKey_toBech32 = self => prefix => self.to_bech32(prefix);
+export const vrfvKey_fromBech32 = bech_str => CSL.VRFVKey.from_bech32(bech_str);
+export const vrfvKey_toHex = self => self.to_hex();
+export const vrfvKey_fromHex = hex => CSL.VRFVKey.from_hex(hex);
 
 // Value
 export const value_free = self => () => self.free();
@@ -1949,9 +1949,9 @@ export const vkey_publicKey = self => self.public_key();
 
 // Vkeys
 export const vkeys_free = self => () => self.free();
-export const vkeys_new = CSL.Vkeys.new();
-export const vkeys_len = self => self.len();
-export const vkeys_get = self => index => self.get(index);
+export const vkeys_new = () => CSL.Vkeys.new();
+export const vkeys_len = self => () => self.len();
+export const vkeys_get = self => index => () => self.get(index);
 export const vkeys_add = self => elem => () => self.add(elem);
 
 // Vkeywitness
@@ -1969,9 +1969,9 @@ export const vkeywitness_signature = self => self.signature();
 
 // Vkeywitnesses
 export const vkeywitnesses_free = self => () => self.free();
-export const vkeywitnesses_new = CSL.Vkeywitnesses.new();
-export const vkeywitnesses_len = self => self.len();
-export const vkeywitnesses_get = self => index => self.get(index);
+export const vkeywitnesses_new = () => CSL.Vkeywitnesses.new();
+export const vkeywitnesses_len = self => () => self.len();
+export const vkeywitnesses_get = self => index => () => self.get(index);
 export const vkeywitnesses_add = self => elem => () => self.add(elem);
 
 // Withdrawals
@@ -1983,9 +1983,9 @@ export const withdrawals_fromHex = hex_str => CSL.Withdrawals.from_hex(hex_str);
 export const withdrawals_toJson = self => self.to_json();
 export const withdrawals_toJsValue = self => self.to_js_value();
 export const withdrawals_fromJson = json => CSL.Withdrawals.from_json(json);
-export const withdrawals_new = CSL.Withdrawals.new();
-export const withdrawals_len = self => self.len();
-export const withdrawals_insert = self => key => value => self.insert(key, value);
-export const withdrawals_get = self => key => self.get(key);
-export const withdrawals_keys = self => self.keys();
+export const withdrawals_new = () => CSL.Withdrawals.new();
+export const withdrawals_len = self => () => self.len();
+export const withdrawals_insert = self => key => value => () => self.insert(key, value);
+export const withdrawals_get = self => key => () => self.get(key);
+export const withdrawals_keys = self => () => self.keys();
 

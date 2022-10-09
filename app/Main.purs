@@ -38,7 +38,7 @@ txBuildExample = do
     Csl.txInsBuilder.addBootstrapIn ins addr (Csl.txIn.new hash 0.0) (Csl.value.new (Csl.bigNum.fromStr "300000"))
     pure ins
 
-  logShow $ Csl.txBuilder.fullSize builder
-  let txBody = Csl.txBuilder.build builder
+  logShow =<< Csl.txBuilder.fullSize builder
+  txBody <- Csl.txBuilder.build builder
   logShow $ Csl.txHash.toHex $ Csl.hashTx txBody
 

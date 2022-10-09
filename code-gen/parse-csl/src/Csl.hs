@@ -7,31 +7,32 @@ import Csl.Gen as X
 import Csl.Parse as X
 import Csl.Types as X
 
-exportPursTypes = do
-  cs <- getClasses
-  writeFile "types.purs" (unlines $ fmap typePurs $ classTypes cs)
+-------------------------------------------------------------------------------------
+-- export parts
 
-exporFuns = do
-  fs <- getFuns
-  mapM_ putStrLn $ fmap funPurs fs
-  putStrLn "\n"
-  mapM_ putStrLn $ fmap typePurs $ funsTypes fs
-  putStrLn "\n"
-  mapM_ putStrLn $ fmap funJs fs
+exportJsFuns = genExport "fun.js" getFuns funJs
+exportPursTypes = genExport "types.purs" (classTypes <$> getClasses) typePurs
+exportPursFuns = genExport "fun.purs" getFuns funPurs
+exportPursClasses = genExport "class.purs" getClasses classPurs
+exportJsClasses = genExport "class.js" getClasses classJs
 
-exportPursClasses = do
-  cs <- getClasses
-  exportFile "class.purs" (unlines $ fmap classPurs cs)
+exportPursExportList = do
+  funs <- getFuns
+  cls <- getClasses
+  exportFile "export.purs" $ unlines $ exportListPurs funs cls
 
-exportJsClasses = do
-  cs <- getClasses
-  exportFile "class.js" (unlines $ fmap classJs cs)
+-------------------------------------------------------------------------------------
+-- read parts
 
 getFuns = funs <$> readFile file
 getClasses = fmap parseClass . toClassParts  <$> readFile file
 
 -------------------------------------------------------------------------------------
 -- utils
+
+genExport :: FilePath -> IO [a] -> (a -> String) -> IO ()
+genExport name extract parse =
+  exportFile name . unlines . fmap parse =<< extract
 
 exportFile :: FilePath -> String -> IO ()
 exportFile name content = writeFile ("output/" <> name) content
