@@ -143,7 +143,9 @@ funJsBy (FunSpec parent isSkipFirst prefix pureFun) (Fun name args res) =
   , if L.null argNames
       then "="
       else "= " <> L.intercalate " => " argNames <> " =>"
-  , mconcat [parent, ".", name, "(", if L.null jsArgs then "" else (L.intercalate ", " jsArgs) ,");"]
+  , flip mappend ";" $
+        let isThrow = canThrow parent name
+        in  mconcat [if isThrow then "errorableToPurs(" else "", parent, ".", name, if isThrow then ", " else "(", if L.null jsArgs then "" else (L.intercalate ", " jsArgs) ,")"]
   ]
   where
     argNames = (if pureFun then id else (<> ["()"])) argNamesIn
@@ -178,7 +180,10 @@ classPurs (Class name ms) = mappend "\n" $
       where
         valMethodDef m
           | hasMaybes m = jsMaybeMethodName m
+          | hasThrow m  = jsThrowMethodName m
           | otherwise   = jsMethodName m
+
+        hasThrow Method{..} = canThrow name (fun'name method'fun)
 
         hasMaybes Method{..} = any isNullType types
           where
@@ -229,12 +234,40 @@ classPurs (Class name ms) = mappend "\n" $
           | isNullType arg'type = "(" <> "Nullable.toNullable " <> toArgName arg <> ")"
           | otherwise           = toArgName arg
 
+    jsThrowMethodName m@Method{..} = toLam (toArgName <$> args) res
+      where
+        toArgName (n, _) = 'a' : show n
+        args = zip [1..] $ addOnObj $ fun'args method'fun
+
+        addOnObj
+          | isObj m   = (Arg (toName name) (toType name) :)
+          | otherwise = id
+
+        res = fromThrowRes (fun'res method'fun) $ unwords $ jsMethodName m : fmap toArgName args
+        isPureMethod = isPure name method'fun
+
+        fromThrowRes resTy
+          | isPureMethod = mappend "runForeignMaybe $ "
+          | otherwise    = mappend "runForeignMaybe <$> "
+
     psSig nullType m@Method{..} = trim $ unwords [ if L.null argTys then "" else (L.intercalate " -> " argTys <> " ->"), resTy]
       where
+        addTypePrefix pref x
+          | length (words x) > 1 = unwords [pref, "(" <> x <> ")"]
+          | otherwise            = unwords [pref, x]
+
         argTys = handleNumArgs $ (if not (isObj m) then id else (toType name :)) $ fmap (handleVoid True . arg'type) $ fun'args $ method'fun
         resTy =
           let pureFun = isPure name method'fun
-          in (if pureFun then id else ("Effect " <>)) $ handleVoid pureFun $ handleNumRes (fun'res $ method'fun)
+          in (if pureFun then id else addTypePrefix "Effect") $ handleThrows $ handleVoid pureFun $ handleNumRes (fun'res $ method'fun)
+
+        handleThrows
+          | canThrow name (fun'name method'fun) = addTypePrefix ty
+          | otherwise                           = id
+          where
+            ty = case nullType of
+              UseNullable -> "ForeignErrorable"
+              _           -> "Maybe"
 
         fromNullType = \case
           UseNullable -> "Nullable"
@@ -583,4 +616,12 @@ intPos =
         , ("set", [1])
         , ("get", [1])
         ]
+
+-- | Is function pure and can throw (in this case we can catch it to Maybe on purs side)
+-- if it's global function use empty name for class
+canThrow :: String -> String -> Bool
+canThrow _className methodName = Set.member methodName froms
+  where
+    froms = Set.fromList ["from_hex", "from_bytes", "from_bech32", "from_json", "from_str"]
+
 

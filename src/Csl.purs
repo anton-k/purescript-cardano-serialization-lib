@@ -6,11 +6,11 @@
 --  * explicit export list to hide raw FFI funs
 module Csl
   ( Bytes
-  , class IsHex, toHex, fromHex
-  , class IsBech32, toBech32, fromBech32
-  , class IsJson, toJson, fromJson
-  , class IsStr, toStr, fromStr
-  , class IsBytes, toBytes, fromBytes
+  , class IsHex, toHex, fromHex, fromHex'
+  , class IsBech32, toBech32, fromBech32, fromBech32'
+  , class IsJson, toJson, fromJson, fromJson'
+  , class IsStr, toStr, fromStr, fromStr'
+  , class IsBytes, toBytes, fromBytes, fromBytes'
   , class ToJsValue, toJsValue
   , class HasFree, free
   , class MutableLen, getLen
@@ -561,13 +561,15 @@ module Csl
   ) where
 
 import Prelude
+import Data.Either (Either(..), hush)
 import Data.Foldable (traverse_)
 import Data.ArrayBuffer.Types (Uint8Array)
 import Effect (Effect)
-import Data.Maybe (Maybe(..))
+import Data.Maybe (Maybe(..), fromJust)
 import Data.Argonaut.Core (Json)
 import Data.Nullable (Nullable)
 import Data.Nullable as Nullable
+import Partial.Unsafe (unsafePartial)
 
 ----------------------------------------------------------------------------
 -- utils
@@ -580,31 +582,64 @@ fromCompare n
   | n > 0 = GT
   | otherwise = EQ
 
+-- Utils for type conversions
+type ForeignErrorable a =
+  (String -> Either String a) -> (a -> Either String a) -> Either String a
+
+runForeignErrorable :: forall (a :: Type). ForeignErrorable a -> Either String a
+runForeignErrorable f = f Left Right
+
+runForeignMaybe :: forall (a :: Type). ForeignErrorable a -> Maybe a
+runForeignMaybe = hush <<< runForeignErrorable
+
+getJust :: forall (a :: Type). Maybe a -> a
+getJust a = unsafePartial (fromJust a)
+
 ----------------------------------------------------------------------------
 -- classes
 
 class IsHex a where
   toHex :: a -> String
-  fromHex :: String -> a
+  fromHex :: String -> Maybe a
+
+-- | Unsafe version of @fromHex@
+fromHex' :: forall (a :: Type). IsHex a => String -> a
+fromHex' = getJust <<< fromHex
 
 class IsStr a where
   toStr :: a -> String
-  fromStr :: String -> a
+  fromStr :: String -> Maybe a
+
+-- | Unsafe version of @fromStr@
+fromStr' :: forall (a :: Type). IsStr a => String -> a
+fromStr' = getJust <<< fromStr
 
 class IsBech32 a where
   toBech32 :: a -> String
-  fromBech32 :: String -> a
+  fromBech32 :: String -> Maybe a
+
+-- | Unsafe version of @fromBech32@
+fromBech32' :: forall (a :: Type). IsBech32 a => String -> a
+fromBech32' = getJust <<< fromBech32
 
 class IsJson a where
   toJson :: a -> String
-  fromJson :: String -> a
+  fromJson :: String -> Maybe a
+
+-- | Unsafe version of @fromJson@
+fromJson' :: forall (a :: Type). IsJson a => String -> a
+fromJson' = getJust <<< fromJson
 
 class ToJsValue a where
   toJsValue :: a -> Json
 
 class IsBytes a where
   toBytes :: a -> Bytes
-  fromBytes :: Bytes -> a
+  fromBytes :: Bytes -> Maybe a
+
+-- | Unsafe version of @fromJson@
+fromBytes' :: forall (a :: Type). IsBytes a => Bytes -> a
+fromBytes' = getJust <<< fromBytes
 
 class HasFree a where
   free :: a -> Effect Unit
@@ -654,7 +689,7 @@ instance Semiring BigInt where
   add = bigInt.add
   mul = bigInt.mul
   one = bigInt.one
-  zero = bigInt.fromHex "zero undefined"
+  zero = fromStr' "zero undefined"
 
 -- Value
 
@@ -1464,19 +1499,20 @@ type WithdrawalsJson = Json
 -- | This
 foreign import data This :: Type
 
+
 -------------------------------------------------------------------------------------
 -- Address
 
 foreign import address_free :: Address -> Effect Unit
-foreign import address_fromBytes :: Bytes -> Address
+foreign import address_fromBytes :: Bytes -> ForeignErrorable Address
 foreign import address_toJson :: Address -> String
 foreign import address_toJsValue :: Address -> AddressJson
-foreign import address_fromJson :: String -> Address
+foreign import address_fromJson :: String -> ForeignErrorable Address
 foreign import address_toHex :: Address -> String
-foreign import address_fromHex :: String -> Address
+foreign import address_fromHex :: String -> ForeignErrorable Address
 foreign import address_toBytes :: Address -> Bytes
 foreign import address_toBech32 :: Address -> String -> String
-foreign import address_fromBech32 :: String -> Address
+foreign import address_fromBech32 :: String -> ForeignErrorable Address
 foreign import address_networkId :: Address -> Int
 
 -- | Address class
@@ -1484,7 +1520,7 @@ type AddressClass =
   { free :: Address -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> Address
+  , fromBytes :: Bytes -> Maybe Address
     -- ^ From bytes
     -- > fromBytes data
   , toJson :: Address -> String
@@ -1493,13 +1529,13 @@ type AddressClass =
   , toJsValue :: Address -> AddressJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Address
+  , fromJson :: String -> Maybe Address
     -- ^ From json
     -- > fromJson json
   , toHex :: Address -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Address
+  , fromHex :: String -> Maybe Address
     -- ^ From hex
     -- > fromHex hexStr
   , toBytes :: Address -> Bytes
@@ -1508,7 +1544,7 @@ type AddressClass =
   , toBech32 :: Address -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> Address
+  , fromBech32 :: String -> Maybe Address
     -- ^ From bech32
     -- > fromBech32 bechStr
   , networkId :: Address -> Int
@@ -1520,15 +1556,15 @@ type AddressClass =
 address :: AddressClass
 address =
   { free: address_free
-  , fromBytes: address_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ address_fromBytes a1
   , toJson: address_toJson
   , toJsValue: address_toJsValue
-  , fromJson: address_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ address_fromJson a1
   , toHex: address_toHex
-  , fromHex: address_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ address_fromHex a1
   , toBytes: address_toBytes
   , toBech32: address_toBech32
-  , fromBech32: address_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ address_fromBech32 a1
   , networkId: address_networkId
   }
 
@@ -1558,12 +1594,12 @@ instance IsJson Address where
 
 foreign import assetName_free :: AssetName -> Effect Unit
 foreign import assetName_toBytes :: AssetName -> Bytes
-foreign import assetName_fromBytes :: Bytes -> AssetName
+foreign import assetName_fromBytes :: Bytes -> ForeignErrorable AssetName
 foreign import assetName_toHex :: AssetName -> String
-foreign import assetName_fromHex :: String -> AssetName
+foreign import assetName_fromHex :: String -> ForeignErrorable AssetName
 foreign import assetName_toJson :: AssetName -> String
 foreign import assetName_toJsValue :: AssetName -> AssetNameJson
-foreign import assetName_fromJson :: String -> AssetName
+foreign import assetName_fromJson :: String -> ForeignErrorable AssetName
 foreign import assetName_new :: Bytes -> AssetName
 foreign import assetName_name :: AssetName -> Bytes
 
@@ -1575,13 +1611,13 @@ type AssetNameClass =
   , toBytes :: AssetName -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> AssetName
+  , fromBytes :: Bytes -> Maybe AssetName
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: AssetName -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> AssetName
+  , fromHex :: String -> Maybe AssetName
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: AssetName -> String
@@ -1590,7 +1626,7 @@ type AssetNameClass =
   , toJsValue :: AssetName -> AssetNameJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> AssetName
+  , fromJson :: String -> Maybe AssetName
     -- ^ From json
     -- > fromJson json
   , new :: Bytes -> AssetName
@@ -1606,12 +1642,12 @@ assetName :: AssetNameClass
 assetName =
   { free: assetName_free
   , toBytes: assetName_toBytes
-  , fromBytes: assetName_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ assetName_fromBytes a1
   , toHex: assetName_toHex
-  , fromHex: assetName_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ assetName_fromHex a1
   , toJson: assetName_toJson
   , toJsValue: assetName_toJsValue
-  , fromJson: assetName_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ assetName_fromJson a1
   , new: assetName_new
   , name: assetName_name
   }
@@ -1642,12 +1678,12 @@ instance IsJson AssetName where
 
 foreign import assetNames_free :: AssetNames -> Effect Unit
 foreign import assetNames_toBytes :: AssetNames -> Bytes
-foreign import assetNames_fromBytes :: Bytes -> AssetNames
+foreign import assetNames_fromBytes :: Bytes -> ForeignErrorable AssetNames
 foreign import assetNames_toHex :: AssetNames -> String
-foreign import assetNames_fromHex :: String -> AssetNames
+foreign import assetNames_fromHex :: String -> ForeignErrorable AssetNames
 foreign import assetNames_toJson :: AssetNames -> String
 foreign import assetNames_toJsValue :: AssetNames -> AssetNamesJson
-foreign import assetNames_fromJson :: String -> AssetNames
+foreign import assetNames_fromJson :: String -> ForeignErrorable AssetNames
 foreign import assetNames_new :: Effect AssetNames
 foreign import assetNames_len :: AssetNames -> Effect Int
 foreign import assetNames_get :: AssetNames -> Int -> Effect AssetName
@@ -1661,13 +1697,13 @@ type AssetNamesClass =
   , toBytes :: AssetNames -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> AssetNames
+  , fromBytes :: Bytes -> Maybe AssetNames
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: AssetNames -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> AssetNames
+  , fromHex :: String -> Maybe AssetNames
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: AssetNames -> String
@@ -1676,7 +1712,7 @@ type AssetNamesClass =
   , toJsValue :: AssetNames -> AssetNamesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> AssetNames
+  , fromJson :: String -> Maybe AssetNames
     -- ^ From json
     -- > fromJson json
   , new :: Effect AssetNames
@@ -1698,12 +1734,12 @@ assetNames :: AssetNamesClass
 assetNames =
   { free: assetNames_free
   , toBytes: assetNames_toBytes
-  , fromBytes: assetNames_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ assetNames_fromBytes a1
   , toHex: assetNames_toHex
-  , fromHex: assetNames_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ assetNames_fromHex a1
   , toJson: assetNames_toJson
   , toJsValue: assetNames_toJsValue
-  , fromJson: assetNames_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ assetNames_fromJson a1
   , new: assetNames_new
   , len: assetNames_len
   , get: assetNames_get
@@ -1745,16 +1781,16 @@ instance IsJson AssetNames where
 
 foreign import assets_free :: Assets -> Effect Unit
 foreign import assets_toBytes :: Assets -> Bytes
-foreign import assets_fromBytes :: Bytes -> Assets
+foreign import assets_fromBytes :: Bytes -> ForeignErrorable Assets
 foreign import assets_toHex :: Assets -> String
-foreign import assets_fromHex :: String -> Assets
+foreign import assets_fromHex :: String -> ForeignErrorable Assets
 foreign import assets_toJson :: Assets -> String
 foreign import assets_toJsValue :: Assets -> AssetsJson
-foreign import assets_fromJson :: String -> Assets
+foreign import assets_fromJson :: String -> ForeignErrorable Assets
 foreign import assets_new :: Effect Assets
 foreign import assets_len :: Assets -> Effect Int
-foreign import assets_insert :: Assets -> AssetName -> BigNum -> Effect (Nullable BigNum)
-foreign import assets_get :: Assets -> AssetName -> Effect (Nullable BigNum)
+foreign import assets_insert :: Assets -> AssetName -> BigNum -> Effect ((Nullable BigNum))
+foreign import assets_get :: Assets -> AssetName -> Effect ((Nullable BigNum))
 foreign import assets_keys :: Assets -> Effect AssetNames
 
 -- | Assets class
@@ -1765,13 +1801,13 @@ type AssetsClass =
   , toBytes :: Assets -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Assets
+  , fromBytes :: Bytes -> Maybe Assets
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Assets -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Assets
+  , fromHex :: String -> Maybe Assets
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Assets -> String
@@ -1780,7 +1816,7 @@ type AssetsClass =
   , toJsValue :: Assets -> AssetsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Assets
+  , fromJson :: String -> Maybe Assets
     -- ^ From json
     -- > fromJson json
   , new :: Effect Assets
@@ -1789,10 +1825,10 @@ type AssetsClass =
   , len :: Assets -> Effect Int
     -- ^ Len
     -- > len self
-  , insert :: Assets -> AssetName -> BigNum -> Effect (Maybe BigNum)
+  , insert :: Assets -> AssetName -> BigNum -> Effect ((Maybe BigNum))
     -- ^ Insert
     -- > insert self key value
-  , get :: Assets -> AssetName -> Effect (Maybe BigNum)
+  , get :: Assets -> AssetName -> Effect ((Maybe BigNum))
     -- ^ Get
     -- > get self key
   , keys :: Assets -> Effect AssetNames
@@ -1805,12 +1841,12 @@ assets :: AssetsClass
 assets =
   { free: assets_free
   , toBytes: assets_toBytes
-  , fromBytes: assets_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ assets_fromBytes a1
   , toHex: assets_toHex
-  , fromHex: assets_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ assets_fromHex a1
   , toJson: assets_toJson
   , toJsValue: assets_toJsValue
-  , fromJson: assets_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ assets_fromJson a1
   , new: assets_new
   , len: assets_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe <$> assets_insert a1 a2 a3
@@ -1844,18 +1880,18 @@ instance IsJson Assets where
 
 foreign import auxiliaryData_free :: AuxiliaryData -> Effect Unit
 foreign import auxiliaryData_toBytes :: AuxiliaryData -> Bytes
-foreign import auxiliaryData_fromBytes :: Bytes -> AuxiliaryData
+foreign import auxiliaryData_fromBytes :: Bytes -> ForeignErrorable AuxiliaryData
 foreign import auxiliaryData_toHex :: AuxiliaryData -> String
-foreign import auxiliaryData_fromHex :: String -> AuxiliaryData
+foreign import auxiliaryData_fromHex :: String -> ForeignErrorable AuxiliaryData
 foreign import auxiliaryData_toJson :: AuxiliaryData -> String
 foreign import auxiliaryData_toJsValue :: AuxiliaryData -> AuxiliaryDataJson
-foreign import auxiliaryData_fromJson :: String -> AuxiliaryData
+foreign import auxiliaryData_fromJson :: String -> ForeignErrorable AuxiliaryData
 foreign import auxiliaryData_new :: Effect AuxiliaryData
 foreign import auxiliaryData_metadata :: AuxiliaryData -> Nullable GeneralTxMetadata
 foreign import auxiliaryData_setMetadata :: AuxiliaryData -> GeneralTxMetadata -> Effect Unit
-foreign import auxiliaryData_nativeScripts :: AuxiliaryData -> Effect (Nullable NativeScripts)
+foreign import auxiliaryData_nativeScripts :: AuxiliaryData -> Effect ((Nullable NativeScripts))
 foreign import auxiliaryData_setNativeScripts :: AuxiliaryData -> NativeScripts -> Effect Unit
-foreign import auxiliaryData_plutusScripts :: AuxiliaryData -> Effect (Nullable PlutusScripts)
+foreign import auxiliaryData_plutusScripts :: AuxiliaryData -> Effect ((Nullable PlutusScripts))
 foreign import auxiliaryData_setPlutusScripts :: AuxiliaryData -> PlutusScripts -> Effect Unit
 
 -- | Auxiliary data class
@@ -1866,13 +1902,13 @@ type AuxiliaryDataClass =
   , toBytes :: AuxiliaryData -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> AuxiliaryData
+  , fromBytes :: Bytes -> Maybe AuxiliaryData
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: AuxiliaryData -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> AuxiliaryData
+  , fromHex :: String -> Maybe AuxiliaryData
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: AuxiliaryData -> String
@@ -1881,7 +1917,7 @@ type AuxiliaryDataClass =
   , toJsValue :: AuxiliaryData -> AuxiliaryDataJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> AuxiliaryData
+  , fromJson :: String -> Maybe AuxiliaryData
     -- ^ From json
     -- > fromJson json
   , new :: Effect AuxiliaryData
@@ -1893,13 +1929,13 @@ type AuxiliaryDataClass =
   , setMetadata :: AuxiliaryData -> GeneralTxMetadata -> Effect Unit
     -- ^ Set metadata
     -- > setMetadata self metadata
-  , nativeScripts :: AuxiliaryData -> Effect (Maybe NativeScripts)
+  , nativeScripts :: AuxiliaryData -> Effect ((Maybe NativeScripts))
     -- ^ Native scripts
     -- > nativeScripts self
   , setNativeScripts :: AuxiliaryData -> NativeScripts -> Effect Unit
     -- ^ Set native scripts
     -- > setNativeScripts self nativeScripts
-  , plutusScripts :: AuxiliaryData -> Effect (Maybe PlutusScripts)
+  , plutusScripts :: AuxiliaryData -> Effect ((Maybe PlutusScripts))
     -- ^ Plutus scripts
     -- > plutusScripts self
   , setPlutusScripts :: AuxiliaryData -> PlutusScripts -> Effect Unit
@@ -1912,12 +1948,12 @@ auxiliaryData :: AuxiliaryDataClass
 auxiliaryData =
   { free: auxiliaryData_free
   , toBytes: auxiliaryData_toBytes
-  , fromBytes: auxiliaryData_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ auxiliaryData_fromBytes a1
   , toHex: auxiliaryData_toHex
-  , fromHex: auxiliaryData_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ auxiliaryData_fromHex a1
   , toJson: auxiliaryData_toJson
   , toJsValue: auxiliaryData_toJsValue
-  , fromJson: auxiliaryData_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ auxiliaryData_fromJson a1
   , new: auxiliaryData_new
   , metadata: \a1 -> Nullable.toMaybe $ auxiliaryData_metadata a1
   , setMetadata: auxiliaryData_setMetadata
@@ -1952,19 +1988,19 @@ instance IsJson AuxiliaryData where
 -- Auxiliary data hash
 
 foreign import auxiliaryDataHash_free :: AuxiliaryDataHash -> Effect Unit
-foreign import auxiliaryDataHash_fromBytes :: Bytes -> AuxiliaryDataHash
+foreign import auxiliaryDataHash_fromBytes :: Bytes -> ForeignErrorable AuxiliaryDataHash
 foreign import auxiliaryDataHash_toBytes :: AuxiliaryDataHash -> Bytes
 foreign import auxiliaryDataHash_toBech32 :: AuxiliaryDataHash -> String -> String
-foreign import auxiliaryDataHash_fromBech32 :: String -> AuxiliaryDataHash
+foreign import auxiliaryDataHash_fromBech32 :: String -> ForeignErrorable AuxiliaryDataHash
 foreign import auxiliaryDataHash_toHex :: AuxiliaryDataHash -> String
-foreign import auxiliaryDataHash_fromHex :: String -> AuxiliaryDataHash
+foreign import auxiliaryDataHash_fromHex :: String -> ForeignErrorable AuxiliaryDataHash
 
 -- | Auxiliary data hash class
 type AuxiliaryDataHashClass =
   { free :: AuxiliaryDataHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> AuxiliaryDataHash
+  , fromBytes :: Bytes -> Maybe AuxiliaryDataHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: AuxiliaryDataHash -> Bytes
@@ -1973,13 +2009,13 @@ type AuxiliaryDataHashClass =
   , toBech32 :: AuxiliaryDataHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> AuxiliaryDataHash
+  , fromBech32 :: String -> Maybe AuxiliaryDataHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: AuxiliaryDataHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> AuxiliaryDataHash
+  , fromHex :: String -> Maybe AuxiliaryDataHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -1988,12 +2024,12 @@ type AuxiliaryDataHashClass =
 auxiliaryDataHash :: AuxiliaryDataHashClass
 auxiliaryDataHash =
   { free: auxiliaryDataHash_free
-  , fromBytes: auxiliaryDataHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ auxiliaryDataHash_fromBytes a1
   , toBytes: auxiliaryDataHash_toBytes
   , toBech32: auxiliaryDataHash_toBech32
-  , fromBech32: auxiliaryDataHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ auxiliaryDataHash_fromBech32 a1
   , toHex: auxiliaryDataHash_toHex
-  , fromHex: auxiliaryDataHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ auxiliaryDataHash_fromHex a1
   }
 
 instance HasFree AuxiliaryDataHash where
@@ -2016,8 +2052,8 @@ instance IsBytes AuxiliaryDataHash where
 foreign import auxiliaryDataSet_free :: AuxiliaryDataSet -> Effect Unit
 foreign import auxiliaryDataSet_new :: Effect AuxiliaryDataSet
 foreign import auxiliaryDataSet_len :: AuxiliaryDataSet -> Int
-foreign import auxiliaryDataSet_insert :: AuxiliaryDataSet -> Int -> AuxiliaryData -> Effect (Nullable AuxiliaryData)
-foreign import auxiliaryDataSet_get :: AuxiliaryDataSet -> Int -> Effect (Nullable AuxiliaryData)
+foreign import auxiliaryDataSet_insert :: AuxiliaryDataSet -> Int -> AuxiliaryData -> Effect ((Nullable AuxiliaryData))
+foreign import auxiliaryDataSet_get :: AuxiliaryDataSet -> Int -> Effect ((Nullable AuxiliaryData))
 foreign import auxiliaryDataSet_indices :: AuxiliaryDataSet -> Effect Uint32Array
 
 -- | Auxiliary data set class
@@ -2031,10 +2067,10 @@ type AuxiliaryDataSetClass =
   , len :: AuxiliaryDataSet -> Int
     -- ^ Len
     -- > len self
-  , insert :: AuxiliaryDataSet -> Int -> AuxiliaryData -> Effect (Maybe AuxiliaryData)
+  , insert :: AuxiliaryDataSet -> Int -> AuxiliaryData -> Effect ((Maybe AuxiliaryData))
     -- ^ Insert
     -- > insert self txIndex data
-  , get :: AuxiliaryDataSet -> Int -> Effect (Maybe AuxiliaryData)
+  , get :: AuxiliaryDataSet -> Int -> Effect ((Maybe AuxiliaryData))
     -- ^ Get
     -- > get self txIndex
   , indices :: AuxiliaryDataSet -> Effect Uint32Array
@@ -2107,16 +2143,16 @@ instance HasFree BaseAddress where
 
 foreign import bigInt_free :: BigInt -> Effect Unit
 foreign import bigInt_toBytes :: BigInt -> Bytes
-foreign import bigInt_fromBytes :: Bytes -> BigInt
+foreign import bigInt_fromBytes :: Bytes -> ForeignErrorable BigInt
 foreign import bigInt_toHex :: BigInt -> String
-foreign import bigInt_fromHex :: String -> BigInt
+foreign import bigInt_fromHex :: String -> ForeignErrorable BigInt
 foreign import bigInt_toJson :: BigInt -> String
 foreign import bigInt_toJsValue :: BigInt -> BigIntJson
-foreign import bigInt_fromJson :: String -> BigInt
+foreign import bigInt_fromJson :: String -> ForeignErrorable BigInt
 foreign import bigInt_isZero :: BigInt -> Boolean
 foreign import bigInt_asU64 :: BigInt -> Nullable BigNum
 foreign import bigInt_asInt :: BigInt -> Nullable Int
-foreign import bigInt_fromStr :: String -> BigInt
+foreign import bigInt_fromStr :: String -> ForeignErrorable BigInt
 foreign import bigInt_toStr :: BigInt -> String
 foreign import bigInt_add :: BigInt -> BigInt -> BigInt
 foreign import bigInt_mul :: BigInt -> BigInt -> BigInt
@@ -2132,13 +2168,13 @@ type BigIntClass =
   , toBytes :: BigInt -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> BigInt
+  , fromBytes :: Bytes -> Maybe BigInt
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: BigInt -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> BigInt
+  , fromHex :: String -> Maybe BigInt
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: BigInt -> String
@@ -2147,7 +2183,7 @@ type BigIntClass =
   , toJsValue :: BigInt -> BigIntJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> BigInt
+  , fromJson :: String -> Maybe BigInt
     -- ^ From json
     -- > fromJson json
   , isZero :: BigInt -> Boolean
@@ -2159,7 +2195,7 @@ type BigIntClass =
   , asInt :: BigInt -> Maybe Int
     -- ^ As int
     -- > asInt self
-  , fromStr :: String -> BigInt
+  , fromStr :: String -> Maybe BigInt
     -- ^ From str
     -- > fromStr text
   , toStr :: BigInt -> String
@@ -2187,16 +2223,16 @@ bigInt :: BigIntClass
 bigInt =
   { free: bigInt_free
   , toBytes: bigInt_toBytes
-  , fromBytes: bigInt_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ bigInt_fromBytes a1
   , toHex: bigInt_toHex
-  , fromHex: bigInt_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ bigInt_fromHex a1
   , toJson: bigInt_toJson
   , toJsValue: bigInt_toJsValue
-  , fromJson: bigInt_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ bigInt_fromJson a1
   , isZero: bigInt_isZero
   , asU64: \a1 -> Nullable.toMaybe $ bigInt_asU64 a1
   , asInt: \a1 -> Nullable.toMaybe $ bigInt_asInt a1
-  , fromStr: bigInt_fromStr
+  , fromStr: \a1 -> runForeignMaybe $ bigInt_fromStr a1
   , toStr: bigInt_toStr
   , add: bigInt_add
   , mul: bigInt_mul
@@ -2235,13 +2271,13 @@ instance IsJson BigInt where
 
 foreign import bigNum_free :: BigNum -> Effect Unit
 foreign import bigNum_toBytes :: BigNum -> Bytes
-foreign import bigNum_fromBytes :: Bytes -> BigNum
+foreign import bigNum_fromBytes :: Bytes -> ForeignErrorable BigNum
 foreign import bigNum_toHex :: BigNum -> String
-foreign import bigNum_fromHex :: String -> BigNum
+foreign import bigNum_fromHex :: String -> ForeignErrorable BigNum
 foreign import bigNum_toJson :: BigNum -> String
 foreign import bigNum_toJsValue :: BigNum -> BigNumJson
-foreign import bigNum_fromJson :: String -> BigNum
-foreign import bigNum_fromStr :: String -> BigNum
+foreign import bigNum_fromJson :: String -> ForeignErrorable BigNum
+foreign import bigNum_fromStr :: String -> ForeignErrorable BigNum
 foreign import bigNum_toStr :: BigNum -> String
 foreign import bigNum_zero :: BigNum
 foreign import bigNum_one :: BigNum
@@ -2263,13 +2299,13 @@ type BigNumClass =
   , toBytes :: BigNum -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> BigNum
+  , fromBytes :: Bytes -> Maybe BigNum
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: BigNum -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> BigNum
+  , fromHex :: String -> Maybe BigNum
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: BigNum -> String
@@ -2278,10 +2314,10 @@ type BigNumClass =
   , toJsValue :: BigNum -> BigNumJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> BigNum
+  , fromJson :: String -> Maybe BigNum
     -- ^ From json
     -- > fromJson json
-  , fromStr :: String -> BigNum
+  , fromStr :: String -> Maybe BigNum
     -- ^ From str
     -- > fromStr string
   , toStr :: BigNum -> String
@@ -2327,13 +2363,13 @@ bigNum :: BigNumClass
 bigNum =
   { free: bigNum_free
   , toBytes: bigNum_toBytes
-  , fromBytes: bigNum_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ bigNum_fromBytes a1
   , toHex: bigNum_toHex
-  , fromHex: bigNum_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ bigNum_fromHex a1
   , toJson: bigNum_toJson
   , toJsValue: bigNum_toJsValue
-  , fromJson: bigNum_fromJson
-  , fromStr: bigNum_fromStr
+  , fromJson: \a1 -> runForeignMaybe $ bigNum_fromJson a1
+  , fromStr: \a1 -> runForeignMaybe $ bigNum_fromStr a1
   , toStr: bigNum_toStr
   , zero: bigNum_zero
   , one: bigNum_one
@@ -2383,14 +2419,14 @@ foreign import bip32PrivateKey_to128Xprv :: Bip32PrivateKey -> Bytes
 foreign import bip32PrivateKey_generateEd25519Bip32 :: Bip32PrivateKey
 foreign import bip32PrivateKey_toRawKey :: Bip32PrivateKey -> PrivateKey
 foreign import bip32PrivateKey_toPublic :: Bip32PrivateKey -> Bip32PublicKey
-foreign import bip32PrivateKey_fromBytes :: Bytes -> Bip32PrivateKey
+foreign import bip32PrivateKey_fromBytes :: Bytes -> ForeignErrorable Bip32PrivateKey
 foreign import bip32PrivateKey_asBytes :: Bip32PrivateKey -> Bytes
-foreign import bip32PrivateKey_fromBech32 :: String -> Bip32PrivateKey
+foreign import bip32PrivateKey_fromBech32 :: String -> ForeignErrorable Bip32PrivateKey
 foreign import bip32PrivateKey_toBech32 :: Bip32PrivateKey -> String
 foreign import bip32PrivateKey_fromBip39Entropy :: Bytes -> Bytes -> Bip32PrivateKey
 foreign import bip32PrivateKey_chaincode :: Bip32PrivateKey -> Bytes
 foreign import bip32PrivateKey_toHex :: Bip32PrivateKey -> String
-foreign import bip32PrivateKey_fromHex :: String -> Bip32PrivateKey
+foreign import bip32PrivateKey_fromHex :: String -> ForeignErrorable Bip32PrivateKey
 
 -- | Bip32 private key class
 type Bip32PrivateKeyClass =
@@ -2415,13 +2451,13 @@ type Bip32PrivateKeyClass =
   , toPublic :: Bip32PrivateKey -> Bip32PublicKey
     -- ^ To public
     -- > toPublic self
-  , fromBytes :: Bytes -> Bip32PrivateKey
+  , fromBytes :: Bytes -> Maybe Bip32PrivateKey
     -- ^ From bytes
     -- > fromBytes bytes
   , asBytes :: Bip32PrivateKey -> Bytes
     -- ^ As bytes
     -- > asBytes self
-  , fromBech32 :: String -> Bip32PrivateKey
+  , fromBech32 :: String -> Maybe Bip32PrivateKey
     -- ^ From bech32
     -- > fromBech32 bech32Str
   , toBech32 :: Bip32PrivateKey -> String
@@ -2436,7 +2472,7 @@ type Bip32PrivateKeyClass =
   , toHex :: Bip32PrivateKey -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Bip32PrivateKey
+  , fromHex :: String -> Maybe Bip32PrivateKey
     -- ^ From hex
     -- > fromHex hexStr
   }
@@ -2451,14 +2487,14 @@ bip32PrivateKey =
   , generateEd25519Bip32: bip32PrivateKey_generateEd25519Bip32
   , toRawKey: bip32PrivateKey_toRawKey
   , toPublic: bip32PrivateKey_toPublic
-  , fromBytes: bip32PrivateKey_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ bip32PrivateKey_fromBytes a1
   , asBytes: bip32PrivateKey_asBytes
-  , fromBech32: bip32PrivateKey_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ bip32PrivateKey_fromBech32 a1
   , toBech32: bip32PrivateKey_toBech32
   , fromBip39Entropy: bip32PrivateKey_fromBip39Entropy
   , chaincode: bip32PrivateKey_chaincode
   , toHex: bip32PrivateKey_toHex
-  , fromHex: bip32PrivateKey_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ bip32PrivateKey_fromHex a1
   }
 
 instance HasFree Bip32PrivateKey where
@@ -2481,13 +2517,13 @@ instance IsBech32 Bip32PrivateKey where
 foreign import bip32PublicKey_free :: Bip32PublicKey -> Effect Unit
 foreign import bip32PublicKey_derive :: Bip32PublicKey -> Number -> Bip32PublicKey
 foreign import bip32PublicKey_toRawKey :: Bip32PublicKey -> PublicKey
-foreign import bip32PublicKey_fromBytes :: Bytes -> Bip32PublicKey
+foreign import bip32PublicKey_fromBytes :: Bytes -> ForeignErrorable Bip32PublicKey
 foreign import bip32PublicKey_asBytes :: Bip32PublicKey -> Bytes
-foreign import bip32PublicKey_fromBech32 :: String -> Bip32PublicKey
+foreign import bip32PublicKey_fromBech32 :: String -> ForeignErrorable Bip32PublicKey
 foreign import bip32PublicKey_toBech32 :: Bip32PublicKey -> String
 foreign import bip32PublicKey_chaincode :: Bip32PublicKey -> Bytes
 foreign import bip32PublicKey_toHex :: Bip32PublicKey -> String
-foreign import bip32PublicKey_fromHex :: String -> Bip32PublicKey
+foreign import bip32PublicKey_fromHex :: String -> ForeignErrorable Bip32PublicKey
 
 -- | Bip32 public key class
 type Bip32PublicKeyClass =
@@ -2500,13 +2536,13 @@ type Bip32PublicKeyClass =
   , toRawKey :: Bip32PublicKey -> PublicKey
     -- ^ To raw key
     -- > toRawKey self
-  , fromBytes :: Bytes -> Bip32PublicKey
+  , fromBytes :: Bytes -> Maybe Bip32PublicKey
     -- ^ From bytes
     -- > fromBytes bytes
   , asBytes :: Bip32PublicKey -> Bytes
     -- ^ As bytes
     -- > asBytes self
-  , fromBech32 :: String -> Bip32PublicKey
+  , fromBech32 :: String -> Maybe Bip32PublicKey
     -- ^ From bech32
     -- > fromBech32 bech32Str
   , toBech32 :: Bip32PublicKey -> String
@@ -2518,7 +2554,7 @@ type Bip32PublicKeyClass =
   , toHex :: Bip32PublicKey -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Bip32PublicKey
+  , fromHex :: String -> Maybe Bip32PublicKey
     -- ^ From hex
     -- > fromHex hexStr
   }
@@ -2529,13 +2565,13 @@ bip32PublicKey =
   { free: bip32PublicKey_free
   , derive: bip32PublicKey_derive
   , toRawKey: bip32PublicKey_toRawKey
-  , fromBytes: bip32PublicKey_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ bip32PublicKey_fromBytes a1
   , asBytes: bip32PublicKey_asBytes
-  , fromBech32: bip32PublicKey_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ bip32PublicKey_fromBech32 a1
   , toBech32: bip32PublicKey_toBech32
   , chaincode: bip32PublicKey_chaincode
   , toHex: bip32PublicKey_toHex
-  , fromHex: bip32PublicKey_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ bip32PublicKey_fromHex a1
   }
 
 instance HasFree Bip32PublicKey where
@@ -2557,12 +2593,12 @@ instance IsBech32 Bip32PublicKey where
 
 foreign import block_free :: Block -> Effect Unit
 foreign import block_toBytes :: Block -> Bytes
-foreign import block_fromBytes :: Bytes -> Block
+foreign import block_fromBytes :: Bytes -> ForeignErrorable Block
 foreign import block_toHex :: Block -> String
-foreign import block_fromHex :: String -> Block
+foreign import block_fromHex :: String -> ForeignErrorable Block
 foreign import block_toJson :: Block -> String
 foreign import block_toJsValue :: Block -> BlockJson
-foreign import block_fromJson :: String -> Block
+foreign import block_fromJson :: String -> ForeignErrorable Block
 foreign import block_header :: Block -> Header
 foreign import block_txBodies :: Block -> TxBodies
 foreign import block_txWitnessSets :: Block -> TxWitnessSets
@@ -2578,13 +2614,13 @@ type BlockClass =
   , toBytes :: Block -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Block
+  , fromBytes :: Bytes -> Maybe Block
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Block -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Block
+  , fromHex :: String -> Maybe Block
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Block -> String
@@ -2593,7 +2629,7 @@ type BlockClass =
   , toJsValue :: Block -> BlockJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Block
+  , fromJson :: String -> Maybe Block
     -- ^ From json
     -- > fromJson json
   , header :: Block -> Header
@@ -2621,12 +2657,12 @@ block :: BlockClass
 block =
   { free: block_free
   , toBytes: block_toBytes
-  , fromBytes: block_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ block_fromBytes a1
   , toHex: block_toHex
-  , fromHex: block_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ block_fromHex a1
   , toJson: block_toJson
   , toJsValue: block_toJsValue
-  , fromJson: block_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ block_fromJson a1
   , header: block_header
   , txBodies: block_txBodies
   , txWitnessSets: block_txWitnessSets
@@ -2660,19 +2696,19 @@ instance IsJson Block where
 -- Block hash
 
 foreign import blockHash_free :: BlockHash -> Effect Unit
-foreign import blockHash_fromBytes :: Bytes -> BlockHash
+foreign import blockHash_fromBytes :: Bytes -> ForeignErrorable BlockHash
 foreign import blockHash_toBytes :: BlockHash -> Bytes
 foreign import blockHash_toBech32 :: BlockHash -> String -> String
-foreign import blockHash_fromBech32 :: String -> BlockHash
+foreign import blockHash_fromBech32 :: String -> ForeignErrorable BlockHash
 foreign import blockHash_toHex :: BlockHash -> String
-foreign import blockHash_fromHex :: String -> BlockHash
+foreign import blockHash_fromHex :: String -> ForeignErrorable BlockHash
 
 -- | Block hash class
 type BlockHashClass =
   { free :: BlockHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> BlockHash
+  , fromBytes :: Bytes -> Maybe BlockHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: BlockHash -> Bytes
@@ -2681,13 +2717,13 @@ type BlockHashClass =
   , toBech32 :: BlockHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> BlockHash
+  , fromBech32 :: String -> Maybe BlockHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: BlockHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> BlockHash
+  , fromHex :: String -> Maybe BlockHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -2696,12 +2732,12 @@ type BlockHashClass =
 blockHash :: BlockHashClass
 blockHash =
   { free: blockHash_free
-  , fromBytes: blockHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ blockHash_fromBytes a1
   , toBytes: blockHash_toBytes
   , toBech32: blockHash_toBech32
-  , fromBech32: blockHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ blockHash_fromBech32 a1
   , toHex: blockHash_toHex
-  , fromHex: blockHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ blockHash_fromHex a1
   }
 
 instance HasFree BlockHash where
@@ -2723,12 +2759,12 @@ instance IsBytes BlockHash where
 
 foreign import bootstrapWitness_free :: BootstrapWitness -> Effect Unit
 foreign import bootstrapWitness_toBytes :: BootstrapWitness -> Bytes
-foreign import bootstrapWitness_fromBytes :: Bytes -> BootstrapWitness
+foreign import bootstrapWitness_fromBytes :: Bytes -> ForeignErrorable BootstrapWitness
 foreign import bootstrapWitness_toHex :: BootstrapWitness -> String
-foreign import bootstrapWitness_fromHex :: String -> BootstrapWitness
+foreign import bootstrapWitness_fromHex :: String -> ForeignErrorable BootstrapWitness
 foreign import bootstrapWitness_toJson :: BootstrapWitness -> String
 foreign import bootstrapWitness_toJsValue :: BootstrapWitness -> BootstrapWitnessJson
-foreign import bootstrapWitness_fromJson :: String -> BootstrapWitness
+foreign import bootstrapWitness_fromJson :: String -> ForeignErrorable BootstrapWitness
 foreign import bootstrapWitness_vkey :: BootstrapWitness -> Vkey
 foreign import bootstrapWitness_signature :: BootstrapWitness -> Ed25519Signature
 foreign import bootstrapWitness_chainCode :: BootstrapWitness -> Bytes
@@ -2743,13 +2779,13 @@ type BootstrapWitnessClass =
   , toBytes :: BootstrapWitness -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> BootstrapWitness
+  , fromBytes :: Bytes -> Maybe BootstrapWitness
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: BootstrapWitness -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> BootstrapWitness
+  , fromHex :: String -> Maybe BootstrapWitness
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: BootstrapWitness -> String
@@ -2758,7 +2794,7 @@ type BootstrapWitnessClass =
   , toJsValue :: BootstrapWitness -> BootstrapWitnessJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> BootstrapWitness
+  , fromJson :: String -> Maybe BootstrapWitness
     -- ^ From json
     -- > fromJson json
   , vkey :: BootstrapWitness -> Vkey
@@ -2783,12 +2819,12 @@ bootstrapWitness :: BootstrapWitnessClass
 bootstrapWitness =
   { free: bootstrapWitness_free
   , toBytes: bootstrapWitness_toBytes
-  , fromBytes: bootstrapWitness_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ bootstrapWitness_fromBytes a1
   , toHex: bootstrapWitness_toHex
-  , fromHex: bootstrapWitness_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ bootstrapWitness_fromHex a1
   , toJson: bootstrapWitness_toJson
   , toJsValue: bootstrapWitness_toJsValue
-  , fromJson: bootstrapWitness_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ bootstrapWitness_fromJson a1
   , vkey: bootstrapWitness_vkey
   , signature: bootstrapWitness_signature
   , chainCode: bootstrapWitness_chainCode
@@ -2872,7 +2908,7 @@ instance MutableLen BootstrapWitnesses where
 foreign import byronAddress_free :: ByronAddress -> Effect Unit
 foreign import byronAddress_toBase58 :: ByronAddress -> String
 foreign import byronAddress_toBytes :: ByronAddress -> Bytes
-foreign import byronAddress_fromBytes :: Bytes -> ByronAddress
+foreign import byronAddress_fromBytes :: Bytes -> ForeignErrorable ByronAddress
 foreign import byronAddress_byronProtocolMagic :: ByronAddress -> Number
 foreign import byronAddress_attributes :: ByronAddress -> Bytes
 foreign import byronAddress_networkId :: ByronAddress -> Int
@@ -2893,7 +2929,7 @@ type ByronAddressClass =
   , toBytes :: ByronAddress -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ByronAddress
+  , fromBytes :: Bytes -> Maybe ByronAddress
     -- ^ From bytes
     -- > fromBytes bytes
   , byronProtocolMagic :: ByronAddress -> Number
@@ -2928,7 +2964,7 @@ byronAddress =
   { free: byronAddress_free
   , toBase58: byronAddress_toBase58
   , toBytes: byronAddress_toBytes
-  , fromBytes: byronAddress_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ byronAddress_fromBytes a1
   , byronProtocolMagic: byronAddress_byronProtocolMagic
   , attributes: byronAddress_attributes
   , networkId: byronAddress_networkId
@@ -2951,12 +2987,12 @@ instance IsBytes ByronAddress where
 
 foreign import certificate_free :: Certificate -> Effect Unit
 foreign import certificate_toBytes :: Certificate -> Bytes
-foreign import certificate_fromBytes :: Bytes -> Certificate
+foreign import certificate_fromBytes :: Bytes -> ForeignErrorable Certificate
 foreign import certificate_toHex :: Certificate -> String
-foreign import certificate_fromHex :: String -> Certificate
+foreign import certificate_fromHex :: String -> ForeignErrorable Certificate
 foreign import certificate_toJson :: Certificate -> String
 foreign import certificate_toJsValue :: Certificate -> CertificateJson
-foreign import certificate_fromJson :: String -> Certificate
+foreign import certificate_fromJson :: String -> ForeignErrorable Certificate
 foreign import certificate_newStakeRegistration :: StakeRegistration -> Certificate
 foreign import certificate_newStakeDeregistration :: StakeDeregistration -> Certificate
 foreign import certificate_newStakeDelegation :: StakeDelegation -> Certificate
@@ -2981,13 +3017,13 @@ type CertificateClass =
   , toBytes :: Certificate -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Certificate
+  , fromBytes :: Bytes -> Maybe Certificate
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Certificate -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Certificate
+  , fromHex :: String -> Maybe Certificate
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Certificate -> String
@@ -2996,7 +3032,7 @@ type CertificateClass =
   , toJsValue :: Certificate -> CertificateJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Certificate
+  , fromJson :: String -> Maybe Certificate
     -- ^ From json
     -- > fromJson json
   , newStakeRegistration :: StakeRegistration -> Certificate
@@ -3051,12 +3087,12 @@ certificate :: CertificateClass
 certificate =
   { free: certificate_free
   , toBytes: certificate_toBytes
-  , fromBytes: certificate_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ certificate_fromBytes a1
   , toHex: certificate_toHex
-  , fromHex: certificate_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ certificate_fromHex a1
   , toJson: certificate_toJson
   , toJsValue: certificate_toJsValue
-  , fromJson: certificate_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ certificate_fromJson a1
   , newStakeRegistration: certificate_newStakeRegistration
   , newStakeDeregistration: certificate_newStakeDeregistration
   , newStakeDelegation: certificate_newStakeDelegation
@@ -3100,12 +3136,12 @@ instance IsJson Certificate where
 
 foreign import certificates_free :: Certificates -> Effect Unit
 foreign import certificates_toBytes :: Certificates -> Bytes
-foreign import certificates_fromBytes :: Bytes -> Certificates
+foreign import certificates_fromBytes :: Bytes -> ForeignErrorable Certificates
 foreign import certificates_toHex :: Certificates -> String
-foreign import certificates_fromHex :: String -> Certificates
+foreign import certificates_fromHex :: String -> ForeignErrorable Certificates
 foreign import certificates_toJson :: Certificates -> String
 foreign import certificates_toJsValue :: Certificates -> CertificatesJson
-foreign import certificates_fromJson :: String -> Certificates
+foreign import certificates_fromJson :: String -> ForeignErrorable Certificates
 foreign import certificates_new :: Effect Certificates
 foreign import certificates_len :: Certificates -> Effect Int
 foreign import certificates_get :: Certificates -> Int -> Effect Certificate
@@ -3119,13 +3155,13 @@ type CertificatesClass =
   , toBytes :: Certificates -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Certificates
+  , fromBytes :: Bytes -> Maybe Certificates
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Certificates -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Certificates
+  , fromHex :: String -> Maybe Certificates
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Certificates -> String
@@ -3134,7 +3170,7 @@ type CertificatesClass =
   , toJsValue :: Certificates -> CertificatesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Certificates
+  , fromJson :: String -> Maybe Certificates
     -- ^ From json
     -- > fromJson json
   , new :: Effect Certificates
@@ -3156,12 +3192,12 @@ certificates :: CertificatesClass
 certificates =
   { free: certificates_free
   , toBytes: certificates_toBytes
-  , fromBytes: certificates_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ certificates_fromBytes a1
   , toHex: certificates_toHex
-  , fromHex: certificates_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ certificates_fromHex a1
   , toJson: certificates_toJson
   , toJsValue: certificates_toJsValue
-  , fromJson: certificates_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ certificates_fromJson a1
   , new: certificates_new
   , len: certificates_len
   , get: certificates_get
@@ -3203,12 +3239,12 @@ instance IsJson Certificates where
 
 foreign import constrPlutusData_free :: ConstrPlutusData -> Effect Unit
 foreign import constrPlutusData_toBytes :: ConstrPlutusData -> Bytes
-foreign import constrPlutusData_fromBytes :: Bytes -> ConstrPlutusData
+foreign import constrPlutusData_fromBytes :: Bytes -> ForeignErrorable ConstrPlutusData
 foreign import constrPlutusData_toHex :: ConstrPlutusData -> String
-foreign import constrPlutusData_fromHex :: String -> ConstrPlutusData
+foreign import constrPlutusData_fromHex :: String -> ForeignErrorable ConstrPlutusData
 foreign import constrPlutusData_toJson :: ConstrPlutusData -> String
 foreign import constrPlutusData_toJsValue :: ConstrPlutusData -> ConstrPlutusDataJson
-foreign import constrPlutusData_fromJson :: String -> ConstrPlutusData
+foreign import constrPlutusData_fromJson :: String -> ForeignErrorable ConstrPlutusData
 foreign import constrPlutusData_alternative :: ConstrPlutusData -> BigNum
 foreign import constrPlutusData_data :: ConstrPlutusData -> PlutusList
 foreign import constrPlutusData_new :: BigNum -> PlutusList -> ConstrPlutusData
@@ -3221,13 +3257,13 @@ type ConstrPlutusDataClass =
   , toBytes :: ConstrPlutusData -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ConstrPlutusData
+  , fromBytes :: Bytes -> Maybe ConstrPlutusData
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ConstrPlutusData -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ConstrPlutusData
+  , fromHex :: String -> Maybe ConstrPlutusData
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ConstrPlutusData -> String
@@ -3236,7 +3272,7 @@ type ConstrPlutusDataClass =
   , toJsValue :: ConstrPlutusData -> ConstrPlutusDataJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ConstrPlutusData
+  , fromJson :: String -> Maybe ConstrPlutusData
     -- ^ From json
     -- > fromJson json
   , alternative :: ConstrPlutusData -> BigNum
@@ -3255,12 +3291,12 @@ constrPlutusData :: ConstrPlutusDataClass
 constrPlutusData =
   { free: constrPlutusData_free
   , toBytes: constrPlutusData_toBytes
-  , fromBytes: constrPlutusData_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ constrPlutusData_fromBytes a1
   , toHex: constrPlutusData_toHex
-  , fromHex: constrPlutusData_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ constrPlutusData_fromHex a1
   , toJson: constrPlutusData_toJson
   , toJsValue: constrPlutusData_toJsValue
-  , fromJson: constrPlutusData_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ constrPlutusData_fromJson a1
   , alternative: constrPlutusData_alternative
   , data: constrPlutusData_data
   , new: constrPlutusData_new
@@ -3292,12 +3328,12 @@ instance IsJson ConstrPlutusData where
 
 foreign import costModel_free :: CostModel -> Effect Unit
 foreign import costModel_toBytes :: CostModel -> Bytes
-foreign import costModel_fromBytes :: Bytes -> CostModel
+foreign import costModel_fromBytes :: Bytes -> ForeignErrorable CostModel
 foreign import costModel_toHex :: CostModel -> String
-foreign import costModel_fromHex :: String -> CostModel
+foreign import costModel_fromHex :: String -> ForeignErrorable CostModel
 foreign import costModel_toJson :: CostModel -> String
 foreign import costModel_toJsValue :: CostModel -> CostModelJson
-foreign import costModel_fromJson :: String -> CostModel
+foreign import costModel_fromJson :: String -> ForeignErrorable CostModel
 foreign import costModel_new :: Effect CostModel
 foreign import costModel_set :: CostModel -> Int -> Int -> Effect Int
 foreign import costModel_get :: CostModel -> Int -> Effect Int
@@ -3311,13 +3347,13 @@ type CostModelClass =
   , toBytes :: CostModel -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> CostModel
+  , fromBytes :: Bytes -> Maybe CostModel
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: CostModel -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> CostModel
+  , fromHex :: String -> Maybe CostModel
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: CostModel -> String
@@ -3326,7 +3362,7 @@ type CostModelClass =
   , toJsValue :: CostModel -> CostModelJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> CostModel
+  , fromJson :: String -> Maybe CostModel
     -- ^ From json
     -- > fromJson json
   , new :: Effect CostModel
@@ -3348,12 +3384,12 @@ costModel :: CostModelClass
 costModel =
   { free: costModel_free
   , toBytes: costModel_toBytes
-  , fromBytes: costModel_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ costModel_fromBytes a1
   , toHex: costModel_toHex
-  , fromHex: costModel_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ costModel_fromHex a1
   , toJson: costModel_toJson
   , toJsValue: costModel_toJsValue
-  , fromJson: costModel_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ costModel_fromJson a1
   , new: costModel_new
   , set: costModel_set
   , get: costModel_get
@@ -3386,16 +3422,16 @@ instance IsJson CostModel where
 
 foreign import costmdls_free :: Costmdls -> Effect Unit
 foreign import costmdls_toBytes :: Costmdls -> Bytes
-foreign import costmdls_fromBytes :: Bytes -> Costmdls
+foreign import costmdls_fromBytes :: Bytes -> ForeignErrorable Costmdls
 foreign import costmdls_toHex :: Costmdls -> String
-foreign import costmdls_fromHex :: String -> Costmdls
+foreign import costmdls_fromHex :: String -> ForeignErrorable Costmdls
 foreign import costmdls_toJson :: Costmdls -> String
 foreign import costmdls_toJsValue :: Costmdls -> CostmdlsJson
-foreign import costmdls_fromJson :: String -> Costmdls
+foreign import costmdls_fromJson :: String -> ForeignErrorable Costmdls
 foreign import costmdls_new :: Effect Costmdls
 foreign import costmdls_len :: Costmdls -> Effect Int
-foreign import costmdls_insert :: Costmdls -> Language -> CostModel -> Effect (Nullable CostModel)
-foreign import costmdls_get :: Costmdls -> Language -> Effect (Nullable CostModel)
+foreign import costmdls_insert :: Costmdls -> Language -> CostModel -> Effect ((Nullable CostModel))
+foreign import costmdls_get :: Costmdls -> Language -> Effect ((Nullable CostModel))
 foreign import costmdls_keys :: Costmdls -> Effect Languages
 foreign import costmdls_retainLanguageVersions :: Costmdls -> Languages -> Costmdls
 
@@ -3407,13 +3443,13 @@ type CostmdlsClass =
   , toBytes :: Costmdls -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Costmdls
+  , fromBytes :: Bytes -> Maybe Costmdls
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Costmdls -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Costmdls
+  , fromHex :: String -> Maybe Costmdls
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Costmdls -> String
@@ -3422,7 +3458,7 @@ type CostmdlsClass =
   , toJsValue :: Costmdls -> CostmdlsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Costmdls
+  , fromJson :: String -> Maybe Costmdls
     -- ^ From json
     -- > fromJson json
   , new :: Effect Costmdls
@@ -3431,10 +3467,10 @@ type CostmdlsClass =
   , len :: Costmdls -> Effect Int
     -- ^ Len
     -- > len self
-  , insert :: Costmdls -> Language -> CostModel -> Effect (Maybe CostModel)
+  , insert :: Costmdls -> Language -> CostModel -> Effect ((Maybe CostModel))
     -- ^ Insert
     -- > insert self key value
-  , get :: Costmdls -> Language -> Effect (Maybe CostModel)
+  , get :: Costmdls -> Language -> Effect ((Maybe CostModel))
     -- ^ Get
     -- > get self key
   , keys :: Costmdls -> Effect Languages
@@ -3450,12 +3486,12 @@ costmdls :: CostmdlsClass
 costmdls =
   { free: costmdls_free
   , toBytes: costmdls_toBytes
-  , fromBytes: costmdls_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ costmdls_fromBytes a1
   , toHex: costmdls_toHex
-  , fromHex: costmdls_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ costmdls_fromHex a1
   , toJson: costmdls_toJson
   , toJsValue: costmdls_toJsValue
-  , fromJson: costmdls_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ costmdls_fromJson a1
   , new: costmdls_new
   , len: costmdls_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe <$> costmdls_insert a1 a2 a3
@@ -3490,12 +3526,12 @@ instance IsJson Costmdls where
 
 foreign import dnsRecordAorAAAA_free :: DNSRecordAorAAAA -> Effect Unit
 foreign import dnsRecordAorAAAA_toBytes :: DNSRecordAorAAAA -> Bytes
-foreign import dnsRecordAorAAAA_fromBytes :: Bytes -> DNSRecordAorAAAA
+foreign import dnsRecordAorAAAA_fromBytes :: Bytes -> ForeignErrorable DNSRecordAorAAAA
 foreign import dnsRecordAorAAAA_toHex :: DNSRecordAorAAAA -> String
-foreign import dnsRecordAorAAAA_fromHex :: String -> DNSRecordAorAAAA
+foreign import dnsRecordAorAAAA_fromHex :: String -> ForeignErrorable DNSRecordAorAAAA
 foreign import dnsRecordAorAAAA_toJson :: DNSRecordAorAAAA -> String
 foreign import dnsRecordAorAAAA_toJsValue :: DNSRecordAorAAAA -> DNSRecordAorAAAAJson
-foreign import dnsRecordAorAAAA_fromJson :: String -> DNSRecordAorAAAA
+foreign import dnsRecordAorAAAA_fromJson :: String -> ForeignErrorable DNSRecordAorAAAA
 foreign import dnsRecordAorAAAA_new :: String -> DNSRecordAorAAAA
 foreign import dnsRecordAorAAAA_record :: DNSRecordAorAAAA -> String
 
@@ -3507,13 +3543,13 @@ type DNSRecordAorAAAAClass =
   , toBytes :: DNSRecordAorAAAA -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> DNSRecordAorAAAA
+  , fromBytes :: Bytes -> Maybe DNSRecordAorAAAA
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: DNSRecordAorAAAA -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> DNSRecordAorAAAA
+  , fromHex :: String -> Maybe DNSRecordAorAAAA
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: DNSRecordAorAAAA -> String
@@ -3522,7 +3558,7 @@ type DNSRecordAorAAAAClass =
   , toJsValue :: DNSRecordAorAAAA -> DNSRecordAorAAAAJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> DNSRecordAorAAAA
+  , fromJson :: String -> Maybe DNSRecordAorAAAA
     -- ^ From json
     -- > fromJson json
   , new :: String -> DNSRecordAorAAAA
@@ -3538,12 +3574,12 @@ dnsRecordAorAAAA :: DNSRecordAorAAAAClass
 dnsRecordAorAAAA =
   { free: dnsRecordAorAAAA_free
   , toBytes: dnsRecordAorAAAA_toBytes
-  , fromBytes: dnsRecordAorAAAA_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ dnsRecordAorAAAA_fromBytes a1
   , toHex: dnsRecordAorAAAA_toHex
-  , fromHex: dnsRecordAorAAAA_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ dnsRecordAorAAAA_fromHex a1
   , toJson: dnsRecordAorAAAA_toJson
   , toJsValue: dnsRecordAorAAAA_toJsValue
-  , fromJson: dnsRecordAorAAAA_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ dnsRecordAorAAAA_fromJson a1
   , new: dnsRecordAorAAAA_new
   , record: dnsRecordAorAAAA_record
   }
@@ -3574,12 +3610,12 @@ instance IsJson DNSRecordAorAAAA where
 
 foreign import dnsRecordSRV_free :: DNSRecordSRV -> Effect Unit
 foreign import dnsRecordSRV_toBytes :: DNSRecordSRV -> Bytes
-foreign import dnsRecordSRV_fromBytes :: Bytes -> DNSRecordSRV
+foreign import dnsRecordSRV_fromBytes :: Bytes -> ForeignErrorable DNSRecordSRV
 foreign import dnsRecordSRV_toHex :: DNSRecordSRV -> String
-foreign import dnsRecordSRV_fromHex :: String -> DNSRecordSRV
+foreign import dnsRecordSRV_fromHex :: String -> ForeignErrorable DNSRecordSRV
 foreign import dnsRecordSRV_toJson :: DNSRecordSRV -> String
 foreign import dnsRecordSRV_toJsValue :: DNSRecordSRV -> DNSRecordSRVJson
-foreign import dnsRecordSRV_fromJson :: String -> DNSRecordSRV
+foreign import dnsRecordSRV_fromJson :: String -> ForeignErrorable DNSRecordSRV
 foreign import dnsRecordSRV_new :: String -> DNSRecordSRV
 foreign import dnsRecordSRV_record :: DNSRecordSRV -> String
 
@@ -3591,13 +3627,13 @@ type DNSRecordSRVClass =
   , toBytes :: DNSRecordSRV -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> DNSRecordSRV
+  , fromBytes :: Bytes -> Maybe DNSRecordSRV
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: DNSRecordSRV -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> DNSRecordSRV
+  , fromHex :: String -> Maybe DNSRecordSRV
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: DNSRecordSRV -> String
@@ -3606,7 +3642,7 @@ type DNSRecordSRVClass =
   , toJsValue :: DNSRecordSRV -> DNSRecordSRVJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> DNSRecordSRV
+  , fromJson :: String -> Maybe DNSRecordSRV
     -- ^ From json
     -- > fromJson json
   , new :: String -> DNSRecordSRV
@@ -3622,12 +3658,12 @@ dnsRecordSRV :: DNSRecordSRVClass
 dnsRecordSRV =
   { free: dnsRecordSRV_free
   , toBytes: dnsRecordSRV_toBytes
-  , fromBytes: dnsRecordSRV_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ dnsRecordSRV_fromBytes a1
   , toHex: dnsRecordSRV_toHex
-  , fromHex: dnsRecordSRV_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ dnsRecordSRV_fromHex a1
   , toJson: dnsRecordSRV_toJson
   , toJsValue: dnsRecordSRV_toJsValue
-  , fromJson: dnsRecordSRV_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ dnsRecordSRV_fromJson a1
   , new: dnsRecordSRV_new
   , record: dnsRecordSRV_record
   }
@@ -3693,19 +3729,19 @@ instance HasFree DataCost where
 -- Data hash
 
 foreign import dataHash_free :: DataHash -> Effect Unit
-foreign import dataHash_fromBytes :: Bytes -> DataHash
+foreign import dataHash_fromBytes :: Bytes -> ForeignErrorable DataHash
 foreign import dataHash_toBytes :: DataHash -> Bytes
 foreign import dataHash_toBech32 :: DataHash -> String -> String
-foreign import dataHash_fromBech32 :: String -> DataHash
+foreign import dataHash_fromBech32 :: String -> ForeignErrorable DataHash
 foreign import dataHash_toHex :: DataHash -> String
-foreign import dataHash_fromHex :: String -> DataHash
+foreign import dataHash_fromHex :: String -> ForeignErrorable DataHash
 
 -- | Data hash class
 type DataHashClass =
   { free :: DataHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> DataHash
+  , fromBytes :: Bytes -> Maybe DataHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: DataHash -> Bytes
@@ -3714,13 +3750,13 @@ type DataHashClass =
   , toBech32 :: DataHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> DataHash
+  , fromBech32 :: String -> Maybe DataHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: DataHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> DataHash
+  , fromHex :: String -> Maybe DataHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -3729,12 +3765,12 @@ type DataHashClass =
 dataHash :: DataHashClass
 dataHash =
   { free: dataHash_free
-  , fromBytes: dataHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ dataHash_fromBytes a1
   , toBytes: dataHash_toBytes
   , toBech32: dataHash_toBech32
-  , fromBech32: dataHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ dataHash_fromBech32 a1
   , toHex: dataHash_toHex
-  , fromHex: dataHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ dataHash_fromHex a1
   }
 
 instance HasFree DataHash where
@@ -3786,19 +3822,19 @@ instance HasFree DatumSource where
 -- Ed25519 key hash
 
 foreign import ed25519KeyHash_free :: Ed25519KeyHash -> Effect Unit
-foreign import ed25519KeyHash_fromBytes :: Bytes -> Ed25519KeyHash
+foreign import ed25519KeyHash_fromBytes :: Bytes -> ForeignErrorable Ed25519KeyHash
 foreign import ed25519KeyHash_toBytes :: Ed25519KeyHash -> Bytes
 foreign import ed25519KeyHash_toBech32 :: Ed25519KeyHash -> String -> String
-foreign import ed25519KeyHash_fromBech32 :: String -> Ed25519KeyHash
+foreign import ed25519KeyHash_fromBech32 :: String -> ForeignErrorable Ed25519KeyHash
 foreign import ed25519KeyHash_toHex :: Ed25519KeyHash -> String
-foreign import ed25519KeyHash_fromHex :: String -> Ed25519KeyHash
+foreign import ed25519KeyHash_fromHex :: String -> ForeignErrorable Ed25519KeyHash
 
 -- | Ed25519 key hash class
 type Ed25519KeyHashClass =
   { free :: Ed25519KeyHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> Ed25519KeyHash
+  , fromBytes :: Bytes -> Maybe Ed25519KeyHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: Ed25519KeyHash -> Bytes
@@ -3807,13 +3843,13 @@ type Ed25519KeyHashClass =
   , toBech32 :: Ed25519KeyHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> Ed25519KeyHash
+  , fromBech32 :: String -> Maybe Ed25519KeyHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: Ed25519KeyHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Ed25519KeyHash
+  , fromHex :: String -> Maybe Ed25519KeyHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -3822,12 +3858,12 @@ type Ed25519KeyHashClass =
 ed25519KeyHash :: Ed25519KeyHashClass
 ed25519KeyHash =
   { free: ed25519KeyHash_free
-  , fromBytes: ed25519KeyHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ ed25519KeyHash_fromBytes a1
   , toBytes: ed25519KeyHash_toBytes
   , toBech32: ed25519KeyHash_toBech32
-  , fromBech32: ed25519KeyHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ ed25519KeyHash_fromBech32 a1
   , toHex: ed25519KeyHash_toHex
-  , fromHex: ed25519KeyHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ ed25519KeyHash_fromHex a1
   }
 
 instance HasFree Ed25519KeyHash where
@@ -3849,12 +3885,12 @@ instance IsBytes Ed25519KeyHash where
 
 foreign import ed25519KeyHashes_free :: Ed25519KeyHashes -> Effect Unit
 foreign import ed25519KeyHashes_toBytes :: Ed25519KeyHashes -> Bytes
-foreign import ed25519KeyHashes_fromBytes :: Bytes -> Ed25519KeyHashes
+foreign import ed25519KeyHashes_fromBytes :: Bytes -> ForeignErrorable Ed25519KeyHashes
 foreign import ed25519KeyHashes_toHex :: Ed25519KeyHashes -> String
-foreign import ed25519KeyHashes_fromHex :: String -> Ed25519KeyHashes
+foreign import ed25519KeyHashes_fromHex :: String -> ForeignErrorable Ed25519KeyHashes
 foreign import ed25519KeyHashes_toJson :: Ed25519KeyHashes -> String
 foreign import ed25519KeyHashes_toJsValue :: Ed25519KeyHashes -> Ed25519KeyHashesJson
-foreign import ed25519KeyHashes_fromJson :: String -> Ed25519KeyHashes
+foreign import ed25519KeyHashes_fromJson :: String -> ForeignErrorable Ed25519KeyHashes
 foreign import ed25519KeyHashes_new :: Ed25519KeyHashes
 foreign import ed25519KeyHashes_len :: Ed25519KeyHashes -> Number
 foreign import ed25519KeyHashes_get :: Ed25519KeyHashes -> Number -> Ed25519KeyHash
@@ -3869,13 +3905,13 @@ type Ed25519KeyHashesClass =
   , toBytes :: Ed25519KeyHashes -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Ed25519KeyHashes
+  , fromBytes :: Bytes -> Maybe Ed25519KeyHashes
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Ed25519KeyHashes -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Ed25519KeyHashes
+  , fromHex :: String -> Maybe Ed25519KeyHashes
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Ed25519KeyHashes -> String
@@ -3884,7 +3920,7 @@ type Ed25519KeyHashesClass =
   , toJsValue :: Ed25519KeyHashes -> Ed25519KeyHashesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Ed25519KeyHashes
+  , fromJson :: String -> Maybe Ed25519KeyHashes
     -- ^ From json
     -- > fromJson json
   , new :: Ed25519KeyHashes
@@ -3909,12 +3945,12 @@ ed25519KeyHashes :: Ed25519KeyHashesClass
 ed25519KeyHashes =
   { free: ed25519KeyHashes_free
   , toBytes: ed25519KeyHashes_toBytes
-  , fromBytes: ed25519KeyHashes_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ ed25519KeyHashes_fromBytes a1
   , toHex: ed25519KeyHashes_toHex
-  , fromHex: ed25519KeyHashes_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ ed25519KeyHashes_fromHex a1
   , toJson: ed25519KeyHashes_toJson
   , toJsValue: ed25519KeyHashes_toJsValue
-  , fromJson: ed25519KeyHashes_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ ed25519KeyHashes_fromJson a1
   , new: ed25519KeyHashes_new
   , len: ed25519KeyHashes_len
   , get: ed25519KeyHashes_get
@@ -3950,9 +3986,9 @@ foreign import ed25519Signature_free :: Ed25519Signature -> Effect Unit
 foreign import ed25519Signature_toBytes :: Ed25519Signature -> Bytes
 foreign import ed25519Signature_toBech32 :: Ed25519Signature -> String
 foreign import ed25519Signature_toHex :: Ed25519Signature -> String
-foreign import ed25519Signature_fromBech32 :: String -> Ed25519Signature
-foreign import ed25519Signature_fromHex :: String -> Ed25519Signature
-foreign import ed25519Signature_fromBytes :: Bytes -> Ed25519Signature
+foreign import ed25519Signature_fromBech32 :: String -> ForeignErrorable Ed25519Signature
+foreign import ed25519Signature_fromHex :: String -> ForeignErrorable Ed25519Signature
+foreign import ed25519Signature_fromBytes :: Bytes -> ForeignErrorable Ed25519Signature
 
 -- | Ed25519 signature class
 type Ed25519SignatureClass =
@@ -3968,13 +4004,13 @@ type Ed25519SignatureClass =
   , toHex :: Ed25519Signature -> String
     -- ^ To hex
     -- > toHex self
-  , fromBech32 :: String -> Ed25519Signature
+  , fromBech32 :: String -> Maybe Ed25519Signature
     -- ^ From bech32
     -- > fromBech32 bech32Str
-  , fromHex :: String -> Ed25519Signature
+  , fromHex :: String -> Maybe Ed25519Signature
     -- ^ From hex
     -- > fromHex in
-  , fromBytes :: Bytes -> Ed25519Signature
+  , fromBytes :: Bytes -> Maybe Ed25519Signature
     -- ^ From bytes
     -- > fromBytes bytes
   }
@@ -3986,9 +4022,9 @@ ed25519Signature =
   , toBytes: ed25519Signature_toBytes
   , toBech32: ed25519Signature_toBech32
   , toHex: ed25519Signature_toHex
-  , fromBech32: ed25519Signature_fromBech32
-  , fromHex: ed25519Signature_fromHex
-  , fromBytes: ed25519Signature_fromBytes
+  , fromBech32: \a1 -> runForeignMaybe $ ed25519Signature_fromBech32 a1
+  , fromHex: \a1 -> runForeignMaybe $ ed25519Signature_fromHex a1
+  , fromBytes: \a1 -> runForeignMaybe $ ed25519Signature_fromBytes a1
   }
 
 instance HasFree Ed25519Signature where
@@ -4055,12 +4091,12 @@ instance HasFree EnterpriseAddress where
 
 foreign import exUnitPrices_free :: ExUnitPrices -> Effect Unit
 foreign import exUnitPrices_toBytes :: ExUnitPrices -> Bytes
-foreign import exUnitPrices_fromBytes :: Bytes -> ExUnitPrices
+foreign import exUnitPrices_fromBytes :: Bytes -> ForeignErrorable ExUnitPrices
 foreign import exUnitPrices_toHex :: ExUnitPrices -> String
-foreign import exUnitPrices_fromHex :: String -> ExUnitPrices
+foreign import exUnitPrices_fromHex :: String -> ForeignErrorable ExUnitPrices
 foreign import exUnitPrices_toJson :: ExUnitPrices -> String
 foreign import exUnitPrices_toJsValue :: ExUnitPrices -> ExUnitPricesJson
-foreign import exUnitPrices_fromJson :: String -> ExUnitPrices
+foreign import exUnitPrices_fromJson :: String -> ForeignErrorable ExUnitPrices
 foreign import exUnitPrices_memPrice :: ExUnitPrices -> UnitInterval
 foreign import exUnitPrices_stepPrice :: ExUnitPrices -> UnitInterval
 foreign import exUnitPrices_new :: UnitInterval -> UnitInterval -> ExUnitPrices
@@ -4073,13 +4109,13 @@ type ExUnitPricesClass =
   , toBytes :: ExUnitPrices -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ExUnitPrices
+  , fromBytes :: Bytes -> Maybe ExUnitPrices
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ExUnitPrices -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ExUnitPrices
+  , fromHex :: String -> Maybe ExUnitPrices
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ExUnitPrices -> String
@@ -4088,7 +4124,7 @@ type ExUnitPricesClass =
   , toJsValue :: ExUnitPrices -> ExUnitPricesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ExUnitPrices
+  , fromJson :: String -> Maybe ExUnitPrices
     -- ^ From json
     -- > fromJson json
   , memPrice :: ExUnitPrices -> UnitInterval
@@ -4107,12 +4143,12 @@ exUnitPrices :: ExUnitPricesClass
 exUnitPrices =
   { free: exUnitPrices_free
   , toBytes: exUnitPrices_toBytes
-  , fromBytes: exUnitPrices_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ exUnitPrices_fromBytes a1
   , toHex: exUnitPrices_toHex
-  , fromHex: exUnitPrices_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ exUnitPrices_fromHex a1
   , toJson: exUnitPrices_toJson
   , toJsValue: exUnitPrices_toJsValue
-  , fromJson: exUnitPrices_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ exUnitPrices_fromJson a1
   , memPrice: exUnitPrices_memPrice
   , stepPrice: exUnitPrices_stepPrice
   , new: exUnitPrices_new
@@ -4144,12 +4180,12 @@ instance IsJson ExUnitPrices where
 
 foreign import exUnits_free :: ExUnits -> Effect Unit
 foreign import exUnits_toBytes :: ExUnits -> Bytes
-foreign import exUnits_fromBytes :: Bytes -> ExUnits
+foreign import exUnits_fromBytes :: Bytes -> ForeignErrorable ExUnits
 foreign import exUnits_toHex :: ExUnits -> String
-foreign import exUnits_fromHex :: String -> ExUnits
+foreign import exUnits_fromHex :: String -> ForeignErrorable ExUnits
 foreign import exUnits_toJson :: ExUnits -> String
 foreign import exUnits_toJsValue :: ExUnits -> ExUnitsJson
-foreign import exUnits_fromJson :: String -> ExUnits
+foreign import exUnits_fromJson :: String -> ForeignErrorable ExUnits
 foreign import exUnits_mem :: ExUnits -> BigNum
 foreign import exUnits_steps :: ExUnits -> BigNum
 foreign import exUnits_new :: BigNum -> BigNum -> ExUnits
@@ -4162,13 +4198,13 @@ type ExUnitsClass =
   , toBytes :: ExUnits -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ExUnits
+  , fromBytes :: Bytes -> Maybe ExUnits
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ExUnits -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ExUnits
+  , fromHex :: String -> Maybe ExUnits
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ExUnits -> String
@@ -4177,7 +4213,7 @@ type ExUnitsClass =
   , toJsValue :: ExUnits -> ExUnitsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ExUnits
+  , fromJson :: String -> Maybe ExUnits
     -- ^ From json
     -- > fromJson json
   , mem :: ExUnits -> BigNum
@@ -4196,12 +4232,12 @@ exUnits :: ExUnitsClass
 exUnits =
   { free: exUnits_free
   , toBytes: exUnits_toBytes
-  , fromBytes: exUnits_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ exUnits_fromBytes a1
   , toHex: exUnits_toHex
-  , fromHex: exUnits_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ exUnits_fromHex a1
   , toJson: exUnits_toJson
   , toJsValue: exUnits_toJsValue
-  , fromJson: exUnits_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ exUnits_fromJson a1
   , mem: exUnits_mem
   , steps: exUnits_steps
   , new: exUnits_new
@@ -4233,16 +4269,16 @@ instance IsJson ExUnits where
 
 foreign import generalTxMetadata_free :: GeneralTxMetadata -> Effect Unit
 foreign import generalTxMetadata_toBytes :: GeneralTxMetadata -> Bytes
-foreign import generalTxMetadata_fromBytes :: Bytes -> GeneralTxMetadata
+foreign import generalTxMetadata_fromBytes :: Bytes -> ForeignErrorable GeneralTxMetadata
 foreign import generalTxMetadata_toHex :: GeneralTxMetadata -> String
-foreign import generalTxMetadata_fromHex :: String -> GeneralTxMetadata
+foreign import generalTxMetadata_fromHex :: String -> ForeignErrorable GeneralTxMetadata
 foreign import generalTxMetadata_toJson :: GeneralTxMetadata -> String
 foreign import generalTxMetadata_toJsValue :: GeneralTxMetadata -> GeneralTxMetadataJson
-foreign import generalTxMetadata_fromJson :: String -> GeneralTxMetadata
+foreign import generalTxMetadata_fromJson :: String -> ForeignErrorable GeneralTxMetadata
 foreign import generalTxMetadata_new :: Effect GeneralTxMetadata
 foreign import generalTxMetadata_len :: GeneralTxMetadata -> Effect Int
-foreign import generalTxMetadata_insert :: GeneralTxMetadata -> BigNum -> TxMetadatum -> Effect (Nullable TxMetadatum)
-foreign import generalTxMetadata_get :: GeneralTxMetadata -> BigNum -> Effect (Nullable TxMetadatum)
+foreign import generalTxMetadata_insert :: GeneralTxMetadata -> BigNum -> TxMetadatum -> Effect ((Nullable TxMetadatum))
+foreign import generalTxMetadata_get :: GeneralTxMetadata -> BigNum -> Effect ((Nullable TxMetadatum))
 foreign import generalTxMetadata_keys :: GeneralTxMetadata -> Effect TxMetadatumLabels
 
 -- | General transaction metadata class
@@ -4253,13 +4289,13 @@ type GeneralTxMetadataClass =
   , toBytes :: GeneralTxMetadata -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> GeneralTxMetadata
+  , fromBytes :: Bytes -> Maybe GeneralTxMetadata
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: GeneralTxMetadata -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> GeneralTxMetadata
+  , fromHex :: String -> Maybe GeneralTxMetadata
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: GeneralTxMetadata -> String
@@ -4268,7 +4304,7 @@ type GeneralTxMetadataClass =
   , toJsValue :: GeneralTxMetadata -> GeneralTxMetadataJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> GeneralTxMetadata
+  , fromJson :: String -> Maybe GeneralTxMetadata
     -- ^ From json
     -- > fromJson json
   , new :: Effect GeneralTxMetadata
@@ -4277,10 +4313,10 @@ type GeneralTxMetadataClass =
   , len :: GeneralTxMetadata -> Effect Int
     -- ^ Len
     -- > len self
-  , insert :: GeneralTxMetadata -> BigNum -> TxMetadatum -> Effect (Maybe TxMetadatum)
+  , insert :: GeneralTxMetadata -> BigNum -> TxMetadatum -> Effect ((Maybe TxMetadatum))
     -- ^ Insert
     -- > insert self key value
-  , get :: GeneralTxMetadata -> BigNum -> Effect (Maybe TxMetadatum)
+  , get :: GeneralTxMetadata -> BigNum -> Effect ((Maybe TxMetadatum))
     -- ^ Get
     -- > get self key
   , keys :: GeneralTxMetadata -> Effect TxMetadatumLabels
@@ -4293,12 +4329,12 @@ generalTxMetadata :: GeneralTxMetadataClass
 generalTxMetadata =
   { free: generalTxMetadata_free
   , toBytes: generalTxMetadata_toBytes
-  , fromBytes: generalTxMetadata_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ generalTxMetadata_fromBytes a1
   , toHex: generalTxMetadata_toHex
-  , fromHex: generalTxMetadata_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ generalTxMetadata_fromHex a1
   , toJson: generalTxMetadata_toJson
   , toJsValue: generalTxMetadata_toJsValue
-  , fromJson: generalTxMetadata_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ generalTxMetadata_fromJson a1
   , new: generalTxMetadata_new
   , len: generalTxMetadata_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe <$> generalTxMetadata_insert a1 a2 a3
@@ -4331,19 +4367,19 @@ instance IsJson GeneralTxMetadata where
 -- Genesis delegate hash
 
 foreign import genesisDelegateHash_free :: GenesisDelegateHash -> Effect Unit
-foreign import genesisDelegateHash_fromBytes :: Bytes -> GenesisDelegateHash
+foreign import genesisDelegateHash_fromBytes :: Bytes -> ForeignErrorable GenesisDelegateHash
 foreign import genesisDelegateHash_toBytes :: GenesisDelegateHash -> Bytes
 foreign import genesisDelegateHash_toBech32 :: GenesisDelegateHash -> String -> String
-foreign import genesisDelegateHash_fromBech32 :: String -> GenesisDelegateHash
+foreign import genesisDelegateHash_fromBech32 :: String -> ForeignErrorable GenesisDelegateHash
 foreign import genesisDelegateHash_toHex :: GenesisDelegateHash -> String
-foreign import genesisDelegateHash_fromHex :: String -> GenesisDelegateHash
+foreign import genesisDelegateHash_fromHex :: String -> ForeignErrorable GenesisDelegateHash
 
 -- | Genesis delegate hash class
 type GenesisDelegateHashClass =
   { free :: GenesisDelegateHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> GenesisDelegateHash
+  , fromBytes :: Bytes -> Maybe GenesisDelegateHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: GenesisDelegateHash -> Bytes
@@ -4352,13 +4388,13 @@ type GenesisDelegateHashClass =
   , toBech32 :: GenesisDelegateHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> GenesisDelegateHash
+  , fromBech32 :: String -> Maybe GenesisDelegateHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: GenesisDelegateHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> GenesisDelegateHash
+  , fromHex :: String -> Maybe GenesisDelegateHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -4367,12 +4403,12 @@ type GenesisDelegateHashClass =
 genesisDelegateHash :: GenesisDelegateHashClass
 genesisDelegateHash =
   { free: genesisDelegateHash_free
-  , fromBytes: genesisDelegateHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ genesisDelegateHash_fromBytes a1
   , toBytes: genesisDelegateHash_toBytes
   , toBech32: genesisDelegateHash_toBech32
-  , fromBech32: genesisDelegateHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ genesisDelegateHash_fromBech32 a1
   , toHex: genesisDelegateHash_toHex
-  , fromHex: genesisDelegateHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ genesisDelegateHash_fromHex a1
   }
 
 instance HasFree GenesisDelegateHash where
@@ -4393,19 +4429,19 @@ instance IsBytes GenesisDelegateHash where
 -- Genesis hash
 
 foreign import genesisHash_free :: GenesisHash -> Effect Unit
-foreign import genesisHash_fromBytes :: Bytes -> GenesisHash
+foreign import genesisHash_fromBytes :: Bytes -> ForeignErrorable GenesisHash
 foreign import genesisHash_toBytes :: GenesisHash -> Bytes
 foreign import genesisHash_toBech32 :: GenesisHash -> String -> String
-foreign import genesisHash_fromBech32 :: String -> GenesisHash
+foreign import genesisHash_fromBech32 :: String -> ForeignErrorable GenesisHash
 foreign import genesisHash_toHex :: GenesisHash -> String
-foreign import genesisHash_fromHex :: String -> GenesisHash
+foreign import genesisHash_fromHex :: String -> ForeignErrorable GenesisHash
 
 -- | Genesis hash class
 type GenesisHashClass =
   { free :: GenesisHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> GenesisHash
+  , fromBytes :: Bytes -> Maybe GenesisHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: GenesisHash -> Bytes
@@ -4414,13 +4450,13 @@ type GenesisHashClass =
   , toBech32 :: GenesisHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> GenesisHash
+  , fromBech32 :: String -> Maybe GenesisHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: GenesisHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> GenesisHash
+  , fromHex :: String -> Maybe GenesisHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -4429,12 +4465,12 @@ type GenesisHashClass =
 genesisHash :: GenesisHashClass
 genesisHash =
   { free: genesisHash_free
-  , fromBytes: genesisHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ genesisHash_fromBytes a1
   , toBytes: genesisHash_toBytes
   , toBech32: genesisHash_toBech32
-  , fromBech32: genesisHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ genesisHash_fromBech32 a1
   , toHex: genesisHash_toHex
-  , fromHex: genesisHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ genesisHash_fromHex a1
   }
 
 instance HasFree GenesisHash where
@@ -4456,12 +4492,12 @@ instance IsBytes GenesisHash where
 
 foreign import genesisHashes_free :: GenesisHashes -> Effect Unit
 foreign import genesisHashes_toBytes :: GenesisHashes -> Bytes
-foreign import genesisHashes_fromBytes :: Bytes -> GenesisHashes
+foreign import genesisHashes_fromBytes :: Bytes -> ForeignErrorable GenesisHashes
 foreign import genesisHashes_toHex :: GenesisHashes -> String
-foreign import genesisHashes_fromHex :: String -> GenesisHashes
+foreign import genesisHashes_fromHex :: String -> ForeignErrorable GenesisHashes
 foreign import genesisHashes_toJson :: GenesisHashes -> String
 foreign import genesisHashes_toJsValue :: GenesisHashes -> GenesisHashesJson
-foreign import genesisHashes_fromJson :: String -> GenesisHashes
+foreign import genesisHashes_fromJson :: String -> ForeignErrorable GenesisHashes
 foreign import genesisHashes_new :: Effect GenesisHashes
 foreign import genesisHashes_len :: GenesisHashes -> Effect Int
 foreign import genesisHashes_get :: GenesisHashes -> Int -> Effect GenesisHash
@@ -4475,13 +4511,13 @@ type GenesisHashesClass =
   , toBytes :: GenesisHashes -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> GenesisHashes
+  , fromBytes :: Bytes -> Maybe GenesisHashes
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: GenesisHashes -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> GenesisHashes
+  , fromHex :: String -> Maybe GenesisHashes
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: GenesisHashes -> String
@@ -4490,7 +4526,7 @@ type GenesisHashesClass =
   , toJsValue :: GenesisHashes -> GenesisHashesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> GenesisHashes
+  , fromJson :: String -> Maybe GenesisHashes
     -- ^ From json
     -- > fromJson json
   , new :: Effect GenesisHashes
@@ -4512,12 +4548,12 @@ genesisHashes :: GenesisHashesClass
 genesisHashes =
   { free: genesisHashes_free
   , toBytes: genesisHashes_toBytes
-  , fromBytes: genesisHashes_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ genesisHashes_fromBytes a1
   , toHex: genesisHashes_toHex
-  , fromHex: genesisHashes_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ genesisHashes_fromHex a1
   , toJson: genesisHashes_toJson
   , toJsValue: genesisHashes_toJsValue
-  , fromJson: genesisHashes_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ genesisHashes_fromJson a1
   , new: genesisHashes_new
   , len: genesisHashes_len
   , get: genesisHashes_get
@@ -4559,12 +4595,12 @@ instance IsJson GenesisHashes where
 
 foreign import genesisKeyDelegation_free :: GenesisKeyDelegation -> Effect Unit
 foreign import genesisKeyDelegation_toBytes :: GenesisKeyDelegation -> Bytes
-foreign import genesisKeyDelegation_fromBytes :: Bytes -> GenesisKeyDelegation
+foreign import genesisKeyDelegation_fromBytes :: Bytes -> ForeignErrorable GenesisKeyDelegation
 foreign import genesisKeyDelegation_toHex :: GenesisKeyDelegation -> String
-foreign import genesisKeyDelegation_fromHex :: String -> GenesisKeyDelegation
+foreign import genesisKeyDelegation_fromHex :: String -> ForeignErrorable GenesisKeyDelegation
 foreign import genesisKeyDelegation_toJson :: GenesisKeyDelegation -> String
 foreign import genesisKeyDelegation_toJsValue :: GenesisKeyDelegation -> GenesisKeyDelegationJson
-foreign import genesisKeyDelegation_fromJson :: String -> GenesisKeyDelegation
+foreign import genesisKeyDelegation_fromJson :: String -> ForeignErrorable GenesisKeyDelegation
 foreign import genesisKeyDelegation_genesishash :: GenesisKeyDelegation -> GenesisHash
 foreign import genesisKeyDelegation_genesisDelegateHash :: GenesisKeyDelegation -> GenesisDelegateHash
 foreign import genesisKeyDelegation_vrfKeyhash :: GenesisKeyDelegation -> VRFKeyHash
@@ -4578,13 +4614,13 @@ type GenesisKeyDelegationClass =
   , toBytes :: GenesisKeyDelegation -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> GenesisKeyDelegation
+  , fromBytes :: Bytes -> Maybe GenesisKeyDelegation
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: GenesisKeyDelegation -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> GenesisKeyDelegation
+  , fromHex :: String -> Maybe GenesisKeyDelegation
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: GenesisKeyDelegation -> String
@@ -4593,7 +4629,7 @@ type GenesisKeyDelegationClass =
   , toJsValue :: GenesisKeyDelegation -> GenesisKeyDelegationJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> GenesisKeyDelegation
+  , fromJson :: String -> Maybe GenesisKeyDelegation
     -- ^ From json
     -- > fromJson json
   , genesishash :: GenesisKeyDelegation -> GenesisHash
@@ -4615,12 +4651,12 @@ genesisKeyDelegation :: GenesisKeyDelegationClass
 genesisKeyDelegation =
   { free: genesisKeyDelegation_free
   , toBytes: genesisKeyDelegation_toBytes
-  , fromBytes: genesisKeyDelegation_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ genesisKeyDelegation_fromBytes a1
   , toHex: genesisKeyDelegation_toHex
-  , fromHex: genesisKeyDelegation_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ genesisKeyDelegation_fromHex a1
   , toJson: genesisKeyDelegation_toJson
   , toJsValue: genesisKeyDelegation_toJsValue
-  , fromJson: genesisKeyDelegation_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ genesisKeyDelegation_fromJson a1
   , genesishash: genesisKeyDelegation_genesishash
   , genesisDelegateHash: genesisKeyDelegation_genesisDelegateHash
   , vrfKeyhash: genesisKeyDelegation_vrfKeyhash
@@ -4653,12 +4689,12 @@ instance IsJson GenesisKeyDelegation where
 
 foreign import header_free :: Header -> Effect Unit
 foreign import header_toBytes :: Header -> Bytes
-foreign import header_fromBytes :: Bytes -> Header
+foreign import header_fromBytes :: Bytes -> ForeignErrorable Header
 foreign import header_toHex :: Header -> String
-foreign import header_fromHex :: String -> Header
+foreign import header_fromHex :: String -> ForeignErrorable Header
 foreign import header_toJson :: Header -> String
 foreign import header_toJsValue :: Header -> HeaderJson
-foreign import header_fromJson :: String -> Header
+foreign import header_fromJson :: String -> ForeignErrorable Header
 foreign import header_headerBody :: Header -> HeaderBody
 foreign import header_bodySignature :: Header -> KESSignature
 foreign import header_new :: HeaderBody -> KESSignature -> Header
@@ -4671,13 +4707,13 @@ type HeaderClass =
   , toBytes :: Header -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Header
+  , fromBytes :: Bytes -> Maybe Header
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Header -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Header
+  , fromHex :: String -> Maybe Header
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Header -> String
@@ -4686,7 +4722,7 @@ type HeaderClass =
   , toJsValue :: Header -> HeaderJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Header
+  , fromJson :: String -> Maybe Header
     -- ^ From json
     -- > fromJson json
   , headerBody :: Header -> HeaderBody
@@ -4705,12 +4741,12 @@ header :: HeaderClass
 header =
   { free: header_free
   , toBytes: header_toBytes
-  , fromBytes: header_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ header_fromBytes a1
   , toHex: header_toHex
-  , fromHex: header_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ header_fromHex a1
   , toJson: header_toJson
   , toJsValue: header_toJsValue
-  , fromJson: header_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ header_fromJson a1
   , headerBody: header_headerBody
   , bodySignature: header_bodySignature
   , new: header_new
@@ -4742,12 +4778,12 @@ instance IsJson Header where
 
 foreign import headerBody_free :: HeaderBody -> Effect Unit
 foreign import headerBody_toBytes :: HeaderBody -> Bytes
-foreign import headerBody_fromBytes :: Bytes -> HeaderBody
+foreign import headerBody_fromBytes :: Bytes -> ForeignErrorable HeaderBody
 foreign import headerBody_toHex :: HeaderBody -> String
-foreign import headerBody_fromHex :: String -> HeaderBody
+foreign import headerBody_fromHex :: String -> ForeignErrorable HeaderBody
 foreign import headerBody_toJson :: HeaderBody -> String
 foreign import headerBody_toJsValue :: HeaderBody -> HeaderBodyJson
-foreign import headerBody_fromJson :: String -> HeaderBody
+foreign import headerBody_fromJson :: String -> ForeignErrorable HeaderBody
 foreign import headerBody_blockNumber :: HeaderBody -> Int
 foreign import headerBody_slot :: HeaderBody -> Int
 foreign import headerBody_slotBignum :: HeaderBody -> BigNum
@@ -4774,13 +4810,13 @@ type HeaderBodyClass =
   , toBytes :: HeaderBody -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> HeaderBody
+  , fromBytes :: Bytes -> Maybe HeaderBody
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: HeaderBody -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> HeaderBody
+  , fromHex :: String -> Maybe HeaderBody
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: HeaderBody -> String
@@ -4789,7 +4825,7 @@ type HeaderBodyClass =
   , toJsValue :: HeaderBody -> HeaderBodyJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> HeaderBody
+  , fromJson :: String -> Maybe HeaderBody
     -- ^ From json
     -- > fromJson json
   , blockNumber :: HeaderBody -> Int
@@ -4850,12 +4886,12 @@ headerBody :: HeaderBodyClass
 headerBody =
   { free: headerBody_free
   , toBytes: headerBody_toBytes
-  , fromBytes: headerBody_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ headerBody_fromBytes a1
   , toHex: headerBody_toHex
-  , fromHex: headerBody_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ headerBody_fromHex a1
   , toJson: headerBody_toJson
   , toJsValue: headerBody_toJsValue
-  , fromJson: headerBody_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ headerBody_fromJson a1
   , blockNumber: headerBody_blockNumber
   , slot: headerBody_slot
   , slotBignum: headerBody_slotBignum
@@ -4901,12 +4937,12 @@ instance IsJson HeaderBody where
 
 foreign import int_free :: Int -> Effect Unit
 foreign import int_toBytes :: Int -> Bytes
-foreign import int_fromBytes :: Bytes -> Int
+foreign import int_fromBytes :: Bytes -> ForeignErrorable Int
 foreign import int_toHex :: Int -> String
-foreign import int_fromHex :: String -> Int
+foreign import int_fromHex :: String -> ForeignErrorable Int
 foreign import int_toJson :: Int -> String
 foreign import int_toJsValue :: Int -> IntJson
-foreign import int_fromJson :: String -> Int
+foreign import int_fromJson :: String -> ForeignErrorable Int
 foreign import int_new :: BigNum -> Int
 foreign import int_newNegative :: BigNum -> Int
 foreign import int_newI32 :: Number -> Int
@@ -4917,7 +4953,7 @@ foreign import int_asI32 :: Int -> Nullable Number
 foreign import int_asI32OrNothing :: Int -> Nullable Number
 foreign import int_asI32OrFail :: Int -> Number
 foreign import int_toStr :: Int -> String
-foreign import int_fromStr :: String -> Int
+foreign import int_fromStr :: String -> ForeignErrorable Int
 
 -- | Int class
 type IntClass =
@@ -4927,13 +4963,13 @@ type IntClass =
   , toBytes :: Int -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Int
+  , fromBytes :: Bytes -> Maybe Int
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Int -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Int
+  , fromHex :: String -> Maybe Int
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Int -> String
@@ -4942,7 +4978,7 @@ type IntClass =
   , toJsValue :: Int -> IntJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Int
+  , fromJson :: String -> Maybe Int
     -- ^ From json
     -- > fromJson json
   , new :: BigNum -> Int
@@ -4975,7 +5011,7 @@ type IntClass =
   , toStr :: Int -> String
     -- ^ To str
     -- > toStr self
-  , fromStr :: String -> Int
+  , fromStr :: String -> Maybe Int
     -- ^ From str
     -- > fromStr string
   }
@@ -4985,12 +5021,12 @@ int :: IntClass
 int =
   { free: int_free
   , toBytes: int_toBytes
-  , fromBytes: int_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ int_fromBytes a1
   , toHex: int_toHex
-  , fromHex: int_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ int_fromHex a1
   , toJson: int_toJson
   , toJsValue: int_toJsValue
-  , fromJson: int_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ int_fromJson a1
   , new: int_new
   , newNegative: int_newNegative
   , newI32: int_newI32
@@ -5001,7 +5037,7 @@ int =
   , asI32OrNothing: \a1 -> Nullable.toMaybe $ int_asI32OrNothing a1
   , asI32OrFail: int_asI32OrFail
   , toStr: int_toStr
-  , fromStr: int_fromStr
+  , fromStr: \a1 -> runForeignMaybe $ int_fromStr a1
   }
 
 
@@ -5011,12 +5047,12 @@ int =
 
 foreign import ipv4_free :: Ipv4 -> Effect Unit
 foreign import ipv4_toBytes :: Ipv4 -> Bytes
-foreign import ipv4_fromBytes :: Bytes -> Ipv4
+foreign import ipv4_fromBytes :: Bytes -> ForeignErrorable Ipv4
 foreign import ipv4_toHex :: Ipv4 -> String
-foreign import ipv4_fromHex :: String -> Ipv4
+foreign import ipv4_fromHex :: String -> ForeignErrorable Ipv4
 foreign import ipv4_toJson :: Ipv4 -> String
 foreign import ipv4_toJsValue :: Ipv4 -> Ipv4Json
-foreign import ipv4_fromJson :: String -> Ipv4
+foreign import ipv4_fromJson :: String -> ForeignErrorable Ipv4
 foreign import ipv4_new :: Bytes -> Ipv4
 foreign import ipv4_ip :: Ipv4 -> Bytes
 
@@ -5028,13 +5064,13 @@ type Ipv4Class =
   , toBytes :: Ipv4 -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Ipv4
+  , fromBytes :: Bytes -> Maybe Ipv4
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Ipv4 -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Ipv4
+  , fromHex :: String -> Maybe Ipv4
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Ipv4 -> String
@@ -5043,7 +5079,7 @@ type Ipv4Class =
   , toJsValue :: Ipv4 -> Ipv4Json
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Ipv4
+  , fromJson :: String -> Maybe Ipv4
     -- ^ From json
     -- > fromJson json
   , new :: Bytes -> Ipv4
@@ -5059,12 +5095,12 @@ ipv4 :: Ipv4Class
 ipv4 =
   { free: ipv4_free
   , toBytes: ipv4_toBytes
-  , fromBytes: ipv4_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ ipv4_fromBytes a1
   , toHex: ipv4_toHex
-  , fromHex: ipv4_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ ipv4_fromHex a1
   , toJson: ipv4_toJson
   , toJsValue: ipv4_toJsValue
-  , fromJson: ipv4_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ ipv4_fromJson a1
   , new: ipv4_new
   , ip: ipv4_ip
   }
@@ -5095,12 +5131,12 @@ instance IsJson Ipv4 where
 
 foreign import ipv6_free :: Ipv6 -> Effect Unit
 foreign import ipv6_toBytes :: Ipv6 -> Bytes
-foreign import ipv6_fromBytes :: Bytes -> Ipv6
+foreign import ipv6_fromBytes :: Bytes -> ForeignErrorable Ipv6
 foreign import ipv6_toHex :: Ipv6 -> String
-foreign import ipv6_fromHex :: String -> Ipv6
+foreign import ipv6_fromHex :: String -> ForeignErrorable Ipv6
 foreign import ipv6_toJson :: Ipv6 -> String
 foreign import ipv6_toJsValue :: Ipv6 -> Ipv6Json
-foreign import ipv6_fromJson :: String -> Ipv6
+foreign import ipv6_fromJson :: String -> ForeignErrorable Ipv6
 foreign import ipv6_new :: Bytes -> Ipv6
 foreign import ipv6_ip :: Ipv6 -> Bytes
 
@@ -5112,13 +5148,13 @@ type Ipv6Class =
   , toBytes :: Ipv6 -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Ipv6
+  , fromBytes :: Bytes -> Maybe Ipv6
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Ipv6 -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Ipv6
+  , fromHex :: String -> Maybe Ipv6
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Ipv6 -> String
@@ -5127,7 +5163,7 @@ type Ipv6Class =
   , toJsValue :: Ipv6 -> Ipv6Json
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Ipv6
+  , fromJson :: String -> Maybe Ipv6
     -- ^ From json
     -- > fromJson json
   , new :: Bytes -> Ipv6
@@ -5143,12 +5179,12 @@ ipv6 :: Ipv6Class
 ipv6 =
   { free: ipv6_free
   , toBytes: ipv6_toBytes
-  , fromBytes: ipv6_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ ipv6_fromBytes a1
   , toHex: ipv6_toHex
-  , fromHex: ipv6_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ ipv6_fromHex a1
   , toJson: ipv6_toJson
   , toJsValue: ipv6_toJsValue
-  , fromJson: ipv6_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ ipv6_fromJson a1
   , new: ipv6_new
   , ip: ipv6_ip
   }
@@ -5179,7 +5215,7 @@ instance IsJson Ipv6 where
 
 foreign import kesSignature_free :: KESSignature -> Effect Unit
 foreign import kesSignature_toBytes :: KESSignature -> Bytes
-foreign import kesSignature_fromBytes :: Bytes -> KESSignature
+foreign import kesSignature_fromBytes :: Bytes -> ForeignErrorable KESSignature
 
 -- | KESSignature class
 type KESSignatureClass =
@@ -5189,7 +5225,7 @@ type KESSignatureClass =
   , toBytes :: KESSignature -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> KESSignature
+  , fromBytes :: Bytes -> Maybe KESSignature
     -- ^ From bytes
     -- > fromBytes bytes
   }
@@ -5199,7 +5235,7 @@ kesSignature :: KESSignatureClass
 kesSignature =
   { free: kesSignature_free
   , toBytes: kesSignature_toBytes
-  , fromBytes: kesSignature_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ kesSignature_fromBytes a1
   }
 
 instance HasFree KESSignature where
@@ -5213,19 +5249,19 @@ instance IsBytes KESSignature where
 -- KESVKey
 
 foreign import kesvKey_free :: KESVKey -> Effect Unit
-foreign import kesvKey_fromBytes :: Bytes -> KESVKey
+foreign import kesvKey_fromBytes :: Bytes -> ForeignErrorable KESVKey
 foreign import kesvKey_toBytes :: KESVKey -> Bytes
 foreign import kesvKey_toBech32 :: KESVKey -> String -> String
-foreign import kesvKey_fromBech32 :: String -> KESVKey
+foreign import kesvKey_fromBech32 :: String -> ForeignErrorable KESVKey
 foreign import kesvKey_toHex :: KESVKey -> String
-foreign import kesvKey_fromHex :: String -> KESVKey
+foreign import kesvKey_fromHex :: String -> ForeignErrorable KESVKey
 
 -- | KESVKey class
 type KESVKeyClass =
   { free :: KESVKey -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> KESVKey
+  , fromBytes :: Bytes -> Maybe KESVKey
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: KESVKey -> Bytes
@@ -5234,13 +5270,13 @@ type KESVKeyClass =
   , toBech32 :: KESVKey -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> KESVKey
+  , fromBech32 :: String -> Maybe KESVKey
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: KESVKey -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> KESVKey
+  , fromHex :: String -> Maybe KESVKey
     -- ^ From hex
     -- > fromHex hex
   }
@@ -5249,12 +5285,12 @@ type KESVKeyClass =
 kesvKey :: KESVKeyClass
 kesvKey =
   { free: kesvKey_free
-  , fromBytes: kesvKey_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ kesvKey_fromBytes a1
   , toBytes: kesvKey_toBytes
   , toBech32: kesvKey_toBech32
-  , fromBech32: kesvKey_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ kesvKey_fromBech32 a1
   , toHex: kesvKey_toHex
-  , fromHex: kesvKey_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ kesvKey_fromHex a1
   }
 
 instance HasFree KESVKey where
@@ -5276,12 +5312,12 @@ instance IsBytes KESVKey where
 
 foreign import language_free :: Language -> Effect Unit
 foreign import language_toBytes :: Language -> Bytes
-foreign import language_fromBytes :: Bytes -> Language
+foreign import language_fromBytes :: Bytes -> ForeignErrorable Language
 foreign import language_toHex :: Language -> String
-foreign import language_fromHex :: String -> Language
+foreign import language_fromHex :: String -> ForeignErrorable Language
 foreign import language_toJson :: Language -> String
 foreign import language_toJsValue :: Language -> LanguageJson
-foreign import language_fromJson :: String -> Language
+foreign import language_fromJson :: String -> ForeignErrorable Language
 foreign import language_newPlutusV1 :: Language
 foreign import language_newPlutusV2 :: Language
 foreign import language_kind :: Language -> Number
@@ -5294,13 +5330,13 @@ type LanguageClass =
   , toBytes :: Language -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Language
+  , fromBytes :: Bytes -> Maybe Language
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Language -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Language
+  , fromHex :: String -> Maybe Language
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Language -> String
@@ -5309,7 +5345,7 @@ type LanguageClass =
   , toJsValue :: Language -> LanguageJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Language
+  , fromJson :: String -> Maybe Language
     -- ^ From json
     -- > fromJson json
   , newPlutusV1 :: Language
@@ -5328,12 +5364,12 @@ language :: LanguageClass
 language =
   { free: language_free
   , toBytes: language_toBytes
-  , fromBytes: language_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ language_fromBytes a1
   , toHex: language_toHex
-  , fromHex: language_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ language_fromHex a1
   , toJson: language_toJson
   , toJsValue: language_toJsValue
-  , fromJson: language_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ language_fromJson a1
   , newPlutusV1: language_newPlutusV1
   , newPlutusV2: language_newPlutusV2
   , kind: language_kind
@@ -5413,7 +5449,7 @@ instance MutableLen Languages where
 -- Legacy daedalus private key
 
 foreign import legacyDaedalusPrivateKey_free :: LegacyDaedalusPrivateKey -> Effect Unit
-foreign import legacyDaedalusPrivateKey_fromBytes :: Bytes -> LegacyDaedalusPrivateKey
+foreign import legacyDaedalusPrivateKey_fromBytes :: Bytes -> ForeignErrorable LegacyDaedalusPrivateKey
 foreign import legacyDaedalusPrivateKey_asBytes :: LegacyDaedalusPrivateKey -> Bytes
 foreign import legacyDaedalusPrivateKey_chaincode :: LegacyDaedalusPrivateKey -> Bytes
 
@@ -5422,7 +5458,7 @@ type LegacyDaedalusPrivateKeyClass =
   { free :: LegacyDaedalusPrivateKey -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> LegacyDaedalusPrivateKey
+  , fromBytes :: Bytes -> Maybe LegacyDaedalusPrivateKey
     -- ^ From bytes
     -- > fromBytes bytes
   , asBytes :: LegacyDaedalusPrivateKey -> Bytes
@@ -5437,7 +5473,7 @@ type LegacyDaedalusPrivateKeyClass =
 legacyDaedalusPrivateKey :: LegacyDaedalusPrivateKeyClass
 legacyDaedalusPrivateKey =
   { free: legacyDaedalusPrivateKey_free
-  , fromBytes: legacyDaedalusPrivateKey_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ legacyDaedalusPrivateKey_fromBytes a1
   , asBytes: legacyDaedalusPrivateKey_asBytes
   , chaincode: legacyDaedalusPrivateKey_chaincode
   }
@@ -5486,16 +5522,16 @@ instance HasFree LinearFee where
 
 foreign import mirToStakeCredentials_free :: MIRToStakeCredentials -> Effect Unit
 foreign import mirToStakeCredentials_toBytes :: MIRToStakeCredentials -> Bytes
-foreign import mirToStakeCredentials_fromBytes :: Bytes -> MIRToStakeCredentials
+foreign import mirToStakeCredentials_fromBytes :: Bytes -> ForeignErrorable MIRToStakeCredentials
 foreign import mirToStakeCredentials_toHex :: MIRToStakeCredentials -> String
-foreign import mirToStakeCredentials_fromHex :: String -> MIRToStakeCredentials
+foreign import mirToStakeCredentials_fromHex :: String -> ForeignErrorable MIRToStakeCredentials
 foreign import mirToStakeCredentials_toJson :: MIRToStakeCredentials -> String
 foreign import mirToStakeCredentials_toJsValue :: MIRToStakeCredentials -> MIRToStakeCredentialsJson
-foreign import mirToStakeCredentials_fromJson :: String -> MIRToStakeCredentials
+foreign import mirToStakeCredentials_fromJson :: String -> ForeignErrorable MIRToStakeCredentials
 foreign import mirToStakeCredentials_new :: Effect MIRToStakeCredentials
 foreign import mirToStakeCredentials_len :: MIRToStakeCredentials -> Effect Number
-foreign import mirToStakeCredentials_insert :: MIRToStakeCredentials -> StakeCredential -> Int -> Effect (Nullable Int)
-foreign import mirToStakeCredentials_get :: MIRToStakeCredentials -> StakeCredential -> Effect (Nullable Int)
+foreign import mirToStakeCredentials_insert :: MIRToStakeCredentials -> StakeCredential -> Int -> Effect ((Nullable Int))
+foreign import mirToStakeCredentials_get :: MIRToStakeCredentials -> StakeCredential -> Effect ((Nullable Int))
 foreign import mirToStakeCredentials_keys :: MIRToStakeCredentials -> Effect StakeCredentials
 
 -- | MIRTo stake credentials class
@@ -5506,13 +5542,13 @@ type MIRToStakeCredentialsClass =
   , toBytes :: MIRToStakeCredentials -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> MIRToStakeCredentials
+  , fromBytes :: Bytes -> Maybe MIRToStakeCredentials
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: MIRToStakeCredentials -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> MIRToStakeCredentials
+  , fromHex :: String -> Maybe MIRToStakeCredentials
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: MIRToStakeCredentials -> String
@@ -5521,7 +5557,7 @@ type MIRToStakeCredentialsClass =
   , toJsValue :: MIRToStakeCredentials -> MIRToStakeCredentialsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> MIRToStakeCredentials
+  , fromJson :: String -> Maybe MIRToStakeCredentials
     -- ^ From json
     -- > fromJson json
   , new :: Effect MIRToStakeCredentials
@@ -5530,10 +5566,10 @@ type MIRToStakeCredentialsClass =
   , len :: MIRToStakeCredentials -> Effect Number
     -- ^ Len
     -- > len self
-  , insert :: MIRToStakeCredentials -> StakeCredential -> Int -> Effect (Maybe Int)
+  , insert :: MIRToStakeCredentials -> StakeCredential -> Int -> Effect ((Maybe Int))
     -- ^ Insert
     -- > insert self cred delta
-  , get :: MIRToStakeCredentials -> StakeCredential -> Effect (Maybe Int)
+  , get :: MIRToStakeCredentials -> StakeCredential -> Effect ((Maybe Int))
     -- ^ Get
     -- > get self cred
   , keys :: MIRToStakeCredentials -> Effect StakeCredentials
@@ -5546,12 +5582,12 @@ mirToStakeCredentials :: MIRToStakeCredentialsClass
 mirToStakeCredentials =
   { free: mirToStakeCredentials_free
   , toBytes: mirToStakeCredentials_toBytes
-  , fromBytes: mirToStakeCredentials_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ mirToStakeCredentials_fromBytes a1
   , toHex: mirToStakeCredentials_toHex
-  , fromHex: mirToStakeCredentials_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ mirToStakeCredentials_fromHex a1
   , toJson: mirToStakeCredentials_toJson
   , toJsValue: mirToStakeCredentials_toJsValue
-  , fromJson: mirToStakeCredentials_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ mirToStakeCredentials_fromJson a1
   , new: mirToStakeCredentials_new
   , len: mirToStakeCredentials_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe <$> mirToStakeCredentials_insert a1 a2 a3
@@ -5585,9 +5621,9 @@ instance IsJson MIRToStakeCredentials where
 
 foreign import metadataList_free :: MetadataList -> Effect Unit
 foreign import metadataList_toBytes :: MetadataList -> Bytes
-foreign import metadataList_fromBytes :: Bytes -> MetadataList
+foreign import metadataList_fromBytes :: Bytes -> ForeignErrorable MetadataList
 foreign import metadataList_toHex :: MetadataList -> String
-foreign import metadataList_fromHex :: String -> MetadataList
+foreign import metadataList_fromHex :: String -> ForeignErrorable MetadataList
 foreign import metadataList_new :: Effect MetadataList
 foreign import metadataList_len :: MetadataList -> Effect Int
 foreign import metadataList_get :: MetadataList -> Int -> Effect TxMetadatum
@@ -5601,13 +5637,13 @@ type MetadataListClass =
   , toBytes :: MetadataList -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> MetadataList
+  , fromBytes :: Bytes -> Maybe MetadataList
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: MetadataList -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> MetadataList
+  , fromHex :: String -> Maybe MetadataList
     -- ^ From hex
     -- > fromHex hexStr
   , new :: Effect MetadataList
@@ -5629,9 +5665,9 @@ metadataList :: MetadataListClass
 metadataList =
   { free: metadataList_free
   , toBytes: metadataList_toBytes
-  , fromBytes: metadataList_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ metadataList_fromBytes a1
   , toHex: metadataList_toHex
-  , fromHex: metadataList_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ metadataList_fromHex a1
   , new: metadataList_new
   , len: metadataList_len
   , get: metadataList_get
@@ -5666,14 +5702,14 @@ instance IsBytes MetadataList where
 
 foreign import metadataMap_free :: MetadataMap -> Effect Unit
 foreign import metadataMap_toBytes :: MetadataMap -> Bytes
-foreign import metadataMap_fromBytes :: Bytes -> MetadataMap
+foreign import metadataMap_fromBytes :: Bytes -> ForeignErrorable MetadataMap
 foreign import metadataMap_toHex :: MetadataMap -> String
-foreign import metadataMap_fromHex :: String -> MetadataMap
+foreign import metadataMap_fromHex :: String -> ForeignErrorable MetadataMap
 foreign import metadataMap_new :: Effect MetadataMap
 foreign import metadataMap_len :: MetadataMap -> Int
-foreign import metadataMap_insert :: MetadataMap -> TxMetadatum -> TxMetadatum -> Effect (Nullable TxMetadatum)
-foreign import metadataMap_insertStr :: MetadataMap -> String -> TxMetadatum -> Effect (Nullable TxMetadatum)
-foreign import metadataMap_insertI32 :: MetadataMap -> Number -> TxMetadatum -> Effect (Nullable TxMetadatum)
+foreign import metadataMap_insert :: MetadataMap -> TxMetadatum -> TxMetadatum -> Effect ((Nullable TxMetadatum))
+foreign import metadataMap_insertStr :: MetadataMap -> String -> TxMetadatum -> Effect ((Nullable TxMetadatum))
+foreign import metadataMap_insertI32 :: MetadataMap -> Number -> TxMetadatum -> Effect ((Nullable TxMetadatum))
 foreign import metadataMap_get :: MetadataMap -> TxMetadatum -> Effect TxMetadatum
 foreign import metadataMap_getStr :: MetadataMap -> String -> Effect TxMetadatum
 foreign import metadataMap_getI32 :: MetadataMap -> Number -> Effect TxMetadatum
@@ -5688,13 +5724,13 @@ type MetadataMapClass =
   , toBytes :: MetadataMap -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> MetadataMap
+  , fromBytes :: Bytes -> Maybe MetadataMap
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: MetadataMap -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> MetadataMap
+  , fromHex :: String -> Maybe MetadataMap
     -- ^ From hex
     -- > fromHex hexStr
   , new :: Effect MetadataMap
@@ -5703,13 +5739,13 @@ type MetadataMapClass =
   , len :: MetadataMap -> Int
     -- ^ Len
     -- > len self
-  , insert :: MetadataMap -> TxMetadatum -> TxMetadatum -> Effect (Maybe TxMetadatum)
+  , insert :: MetadataMap -> TxMetadatum -> TxMetadatum -> Effect ((Maybe TxMetadatum))
     -- ^ Insert
     -- > insert self key value
-  , insertStr :: MetadataMap -> String -> TxMetadatum -> Effect (Maybe TxMetadatum)
+  , insertStr :: MetadataMap -> String -> TxMetadatum -> Effect ((Maybe TxMetadatum))
     -- ^ Insert str
     -- > insertStr self key value
-  , insertI32 :: MetadataMap -> Number -> TxMetadatum -> Effect (Maybe TxMetadatum)
+  , insertI32 :: MetadataMap -> Number -> TxMetadatum -> Effect ((Maybe TxMetadatum))
     -- ^ Insert i32
     -- > insertI32 self key value
   , get :: MetadataMap -> TxMetadatum -> Effect TxMetadatum
@@ -5734,9 +5770,9 @@ metadataMap :: MetadataMapClass
 metadataMap =
   { free: metadataMap_free
   , toBytes: metadataMap_toBytes
-  , fromBytes: metadataMap_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ metadataMap_fromBytes a1
   , toHex: metadataMap_toHex
-  , fromHex: metadataMap_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ metadataMap_fromHex a1
   , new: metadataMap_new
   , len: metadataMap_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe <$> metadataMap_insert a1 a2 a3
@@ -5768,17 +5804,17 @@ instance IsBytes MetadataMap where
 
 foreign import mint_free :: Mint -> Effect Unit
 foreign import mint_toBytes :: Mint -> Bytes
-foreign import mint_fromBytes :: Bytes -> Mint
+foreign import mint_fromBytes :: Bytes -> ForeignErrorable Mint
 foreign import mint_toHex :: Mint -> String
-foreign import mint_fromHex :: String -> Mint
+foreign import mint_fromHex :: String -> ForeignErrorable Mint
 foreign import mint_toJson :: Mint -> String
 foreign import mint_toJsValue :: Mint -> MintJson
-foreign import mint_fromJson :: String -> Mint
+foreign import mint_fromJson :: String -> ForeignErrorable Mint
 foreign import mint_new :: Effect Mint
 foreign import mint_newFromEntry :: ScriptHash -> MintAssets -> Effect Mint
 foreign import mint_len :: Mint -> Effect Int
-foreign import mint_insert :: Mint -> ScriptHash -> MintAssets -> Effect (Nullable MintAssets)
-foreign import mint_get :: Mint -> ScriptHash -> Effect (Nullable MintAssets)
+foreign import mint_insert :: Mint -> ScriptHash -> MintAssets -> Effect ((Nullable MintAssets))
+foreign import mint_get :: Mint -> ScriptHash -> Effect ((Nullable MintAssets))
 foreign import mint_keys :: Mint -> Effect ScriptHashes
 foreign import mint_asPositiveMultiasset :: Mint -> Effect MultiAsset
 foreign import mint_asNegativeMultiasset :: Mint -> Effect MultiAsset
@@ -5791,13 +5827,13 @@ type MintClass =
   , toBytes :: Mint -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Mint
+  , fromBytes :: Bytes -> Maybe Mint
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Mint -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Mint
+  , fromHex :: String -> Maybe Mint
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Mint -> String
@@ -5806,7 +5842,7 @@ type MintClass =
   , toJsValue :: Mint -> MintJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Mint
+  , fromJson :: String -> Maybe Mint
     -- ^ From json
     -- > fromJson json
   , new :: Effect Mint
@@ -5818,10 +5854,10 @@ type MintClass =
   , len :: Mint -> Effect Int
     -- ^ Len
     -- > len self
-  , insert :: Mint -> ScriptHash -> MintAssets -> Effect (Maybe MintAssets)
+  , insert :: Mint -> ScriptHash -> MintAssets -> Effect ((Maybe MintAssets))
     -- ^ Insert
     -- > insert self key value
-  , get :: Mint -> ScriptHash -> Effect (Maybe MintAssets)
+  , get :: Mint -> ScriptHash -> Effect ((Maybe MintAssets))
     -- ^ Get
     -- > get self key
   , keys :: Mint -> Effect ScriptHashes
@@ -5840,12 +5876,12 @@ mint :: MintClass
 mint =
   { free: mint_free
   , toBytes: mint_toBytes
-  , fromBytes: mint_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ mint_fromBytes a1
   , toHex: mint_toHex
-  , fromHex: mint_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ mint_fromHex a1
   , toJson: mint_toJson
   , toJsValue: mint_toJsValue
-  , fromJson: mint_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ mint_fromJson a1
   , new: mint_new
   , newFromEntry: mint_newFromEntry
   , len: mint_len
@@ -5884,8 +5920,8 @@ foreign import mintAssets_free :: MintAssets -> Effect Unit
 foreign import mintAssets_new :: Effect MintAssets
 foreign import mintAssets_newFromEntry :: AssetName -> Int -> MintAssets
 foreign import mintAssets_len :: MintAssets -> Effect Int
-foreign import mintAssets_insert :: MintAssets -> AssetName -> Int -> Effect (Nullable Int)
-foreign import mintAssets_get :: MintAssets -> AssetName -> Effect (Nullable Int)
+foreign import mintAssets_insert :: MintAssets -> AssetName -> Int -> Effect ((Nullable Int))
+foreign import mintAssets_get :: MintAssets -> AssetName -> Effect ((Nullable Int))
 foreign import mintAssets_keys :: MintAssets -> Effect AssetNames
 
 -- | Mint assets class
@@ -5902,10 +5938,10 @@ type MintAssetsClass =
   , len :: MintAssets -> Effect Int
     -- ^ Len
     -- > len self
-  , insert :: MintAssets -> AssetName -> Int -> Effect (Maybe Int)
+  , insert :: MintAssets -> AssetName -> Int -> Effect ((Maybe Int))
     -- ^ Insert
     -- > insert self key value
-  , get :: MintAssets -> AssetName -> Effect (Maybe Int)
+  , get :: MintAssets -> AssetName -> Effect ((Maybe Int))
     -- ^ Get
     -- > get self key
   , keys :: MintAssets -> Effect AssetNames
@@ -5933,12 +5969,12 @@ instance HasFree MintAssets where
 
 foreign import moveInstantaneousReward_free :: MoveInstantaneousReward -> Effect Unit
 foreign import moveInstantaneousReward_toBytes :: MoveInstantaneousReward -> Bytes
-foreign import moveInstantaneousReward_fromBytes :: Bytes -> MoveInstantaneousReward
+foreign import moveInstantaneousReward_fromBytes :: Bytes -> ForeignErrorable MoveInstantaneousReward
 foreign import moveInstantaneousReward_toHex :: MoveInstantaneousReward -> String
-foreign import moveInstantaneousReward_fromHex :: String -> MoveInstantaneousReward
+foreign import moveInstantaneousReward_fromHex :: String -> ForeignErrorable MoveInstantaneousReward
 foreign import moveInstantaneousReward_toJson :: MoveInstantaneousReward -> String
 foreign import moveInstantaneousReward_toJsValue :: MoveInstantaneousReward -> MoveInstantaneousRewardJson
-foreign import moveInstantaneousReward_fromJson :: String -> MoveInstantaneousReward
+foreign import moveInstantaneousReward_fromJson :: String -> ForeignErrorable MoveInstantaneousReward
 foreign import moveInstantaneousReward_newToOtherPot :: Number -> BigNum -> MoveInstantaneousReward
 foreign import moveInstantaneousReward_newToStakeCreds :: Number -> MIRToStakeCredentials -> MoveInstantaneousReward
 foreign import moveInstantaneousReward_pot :: MoveInstantaneousReward -> Number
@@ -5954,13 +5990,13 @@ type MoveInstantaneousRewardClass =
   , toBytes :: MoveInstantaneousReward -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> MoveInstantaneousReward
+  , fromBytes :: Bytes -> Maybe MoveInstantaneousReward
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: MoveInstantaneousReward -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> MoveInstantaneousReward
+  , fromHex :: String -> Maybe MoveInstantaneousReward
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: MoveInstantaneousReward -> String
@@ -5969,7 +6005,7 @@ type MoveInstantaneousRewardClass =
   , toJsValue :: MoveInstantaneousReward -> MoveInstantaneousRewardJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> MoveInstantaneousReward
+  , fromJson :: String -> Maybe MoveInstantaneousReward
     -- ^ From json
     -- > fromJson json
   , newToOtherPot :: Number -> BigNum -> MoveInstantaneousReward
@@ -5997,12 +6033,12 @@ moveInstantaneousReward :: MoveInstantaneousRewardClass
 moveInstantaneousReward =
   { free: moveInstantaneousReward_free
   , toBytes: moveInstantaneousReward_toBytes
-  , fromBytes: moveInstantaneousReward_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ moveInstantaneousReward_fromBytes a1
   , toHex: moveInstantaneousReward_toHex
-  , fromHex: moveInstantaneousReward_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ moveInstantaneousReward_fromHex a1
   , toJson: moveInstantaneousReward_toJson
   , toJsValue: moveInstantaneousReward_toJsValue
-  , fromJson: moveInstantaneousReward_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ moveInstantaneousReward_fromJson a1
   , newToOtherPot: moveInstantaneousReward_newToOtherPot
   , newToStakeCreds: moveInstantaneousReward_newToStakeCreds
   , pot: moveInstantaneousReward_pot
@@ -6037,12 +6073,12 @@ instance IsJson MoveInstantaneousReward where
 
 foreign import moveInstantaneousRewardsCert_free :: MoveInstantaneousRewardsCert -> Effect Unit
 foreign import moveInstantaneousRewardsCert_toBytes :: MoveInstantaneousRewardsCert -> Bytes
-foreign import moveInstantaneousRewardsCert_fromBytes :: Bytes -> MoveInstantaneousRewardsCert
+foreign import moveInstantaneousRewardsCert_fromBytes :: Bytes -> ForeignErrorable MoveInstantaneousRewardsCert
 foreign import moveInstantaneousRewardsCert_toHex :: MoveInstantaneousRewardsCert -> String
-foreign import moveInstantaneousRewardsCert_fromHex :: String -> MoveInstantaneousRewardsCert
+foreign import moveInstantaneousRewardsCert_fromHex :: String -> ForeignErrorable MoveInstantaneousRewardsCert
 foreign import moveInstantaneousRewardsCert_toJson :: MoveInstantaneousRewardsCert -> String
 foreign import moveInstantaneousRewardsCert_toJsValue :: MoveInstantaneousRewardsCert -> MoveInstantaneousRewardsCertJson
-foreign import moveInstantaneousRewardsCert_fromJson :: String -> MoveInstantaneousRewardsCert
+foreign import moveInstantaneousRewardsCert_fromJson :: String -> ForeignErrorable MoveInstantaneousRewardsCert
 foreign import moveInstantaneousRewardsCert_moveInstantaneousReward :: MoveInstantaneousRewardsCert -> MoveInstantaneousReward
 foreign import moveInstantaneousRewardsCert_new :: MoveInstantaneousReward -> MoveInstantaneousRewardsCert
 
@@ -6054,13 +6090,13 @@ type MoveInstantaneousRewardsCertClass =
   , toBytes :: MoveInstantaneousRewardsCert -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> MoveInstantaneousRewardsCert
+  , fromBytes :: Bytes -> Maybe MoveInstantaneousRewardsCert
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: MoveInstantaneousRewardsCert -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> MoveInstantaneousRewardsCert
+  , fromHex :: String -> Maybe MoveInstantaneousRewardsCert
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: MoveInstantaneousRewardsCert -> String
@@ -6069,7 +6105,7 @@ type MoveInstantaneousRewardsCertClass =
   , toJsValue :: MoveInstantaneousRewardsCert -> MoveInstantaneousRewardsCertJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> MoveInstantaneousRewardsCert
+  , fromJson :: String -> Maybe MoveInstantaneousRewardsCert
     -- ^ From json
     -- > fromJson json
   , moveInstantaneousReward :: MoveInstantaneousRewardsCert -> MoveInstantaneousReward
@@ -6085,12 +6121,12 @@ moveInstantaneousRewardsCert :: MoveInstantaneousRewardsCertClass
 moveInstantaneousRewardsCert =
   { free: moveInstantaneousRewardsCert_free
   , toBytes: moveInstantaneousRewardsCert_toBytes
-  , fromBytes: moveInstantaneousRewardsCert_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ moveInstantaneousRewardsCert_fromBytes a1
   , toHex: moveInstantaneousRewardsCert_toHex
-  , fromHex: moveInstantaneousRewardsCert_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ moveInstantaneousRewardsCert_fromHex a1
   , toJson: moveInstantaneousRewardsCert_toJson
   , toJsValue: moveInstantaneousRewardsCert_toJsValue
-  , fromJson: moveInstantaneousRewardsCert_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ moveInstantaneousRewardsCert_fromJson a1
   , moveInstantaneousReward: moveInstantaneousRewardsCert_moveInstantaneousReward
   , new: moveInstantaneousRewardsCert_new
   }
@@ -6121,17 +6157,17 @@ instance IsJson MoveInstantaneousRewardsCert where
 
 foreign import multiAsset_free :: MultiAsset -> Effect Unit
 foreign import multiAsset_toBytes :: MultiAsset -> Bytes
-foreign import multiAsset_fromBytes :: Bytes -> MultiAsset
+foreign import multiAsset_fromBytes :: Bytes -> ForeignErrorable MultiAsset
 foreign import multiAsset_toHex :: MultiAsset -> String
-foreign import multiAsset_fromHex :: String -> MultiAsset
+foreign import multiAsset_fromHex :: String -> ForeignErrorable MultiAsset
 foreign import multiAsset_toJson :: MultiAsset -> String
 foreign import multiAsset_toJsValue :: MultiAsset -> MultiAssetJson
-foreign import multiAsset_fromJson :: String -> MultiAsset
+foreign import multiAsset_fromJson :: String -> ForeignErrorable MultiAsset
 foreign import multiAsset_new :: Effect MultiAsset
 foreign import multiAsset_len :: MultiAsset -> Effect Int
 foreign import multiAsset_insert :: MultiAsset -> ScriptHash -> Assets -> Nullable Assets
-foreign import multiAsset_get :: MultiAsset -> ScriptHash -> Effect (Nullable Assets)
-foreign import multiAsset_setAsset :: MultiAsset -> ScriptHash -> AssetName -> BigNum -> Effect (Nullable BigNum)
+foreign import multiAsset_get :: MultiAsset -> ScriptHash -> Effect ((Nullable Assets))
+foreign import multiAsset_setAsset :: MultiAsset -> ScriptHash -> AssetName -> BigNum -> Effect ((Nullable BigNum))
 foreign import multiAsset_getAsset :: MultiAsset -> ScriptHash -> AssetName -> Effect BigNum
 foreign import multiAsset_keys :: MultiAsset -> Effect ScriptHashes
 foreign import multiAsset_sub :: MultiAsset -> MultiAsset -> Effect MultiAsset
@@ -6144,13 +6180,13 @@ type MultiAssetClass =
   , toBytes :: MultiAsset -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> MultiAsset
+  , fromBytes :: Bytes -> Maybe MultiAsset
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: MultiAsset -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> MultiAsset
+  , fromHex :: String -> Maybe MultiAsset
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: MultiAsset -> String
@@ -6159,7 +6195,7 @@ type MultiAssetClass =
   , toJsValue :: MultiAsset -> MultiAssetJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> MultiAsset
+  , fromJson :: String -> Maybe MultiAsset
     -- ^ From json
     -- > fromJson json
   , new :: Effect MultiAsset
@@ -6171,10 +6207,10 @@ type MultiAssetClass =
   , insert :: MultiAsset -> ScriptHash -> Assets -> Maybe Assets
     -- ^ Insert
     -- > insert self policyId assets
-  , get :: MultiAsset -> ScriptHash -> Effect (Maybe Assets)
+  , get :: MultiAsset -> ScriptHash -> Effect ((Maybe Assets))
     -- ^ Get
     -- > get self policyId
-  , setAsset :: MultiAsset -> ScriptHash -> AssetName -> BigNum -> Effect (Maybe BigNum)
+  , setAsset :: MultiAsset -> ScriptHash -> AssetName -> BigNum -> Effect ((Maybe BigNum))
     -- ^ Set asset
     -- > setAsset self policyId assetName value
   , getAsset :: MultiAsset -> ScriptHash -> AssetName -> Effect BigNum
@@ -6193,12 +6229,12 @@ multiAsset :: MultiAssetClass
 multiAsset =
   { free: multiAsset_free
   , toBytes: multiAsset_toBytes
-  , fromBytes: multiAsset_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ multiAsset_fromBytes a1
   , toHex: multiAsset_toHex
-  , fromHex: multiAsset_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ multiAsset_fromHex a1
   , toJson: multiAsset_toJson
   , toJsValue: multiAsset_toJsValue
-  , fromJson: multiAsset_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ multiAsset_fromJson a1
   , new: multiAsset_new
   , len: multiAsset_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe $ multiAsset_insert a1 a2 a3
@@ -6235,12 +6271,12 @@ instance IsJson MultiAsset where
 
 foreign import multiHostName_free :: MultiHostName -> Effect Unit
 foreign import multiHostName_toBytes :: MultiHostName -> Bytes
-foreign import multiHostName_fromBytes :: Bytes -> MultiHostName
+foreign import multiHostName_fromBytes :: Bytes -> ForeignErrorable MultiHostName
 foreign import multiHostName_toHex :: MultiHostName -> String
-foreign import multiHostName_fromHex :: String -> MultiHostName
+foreign import multiHostName_fromHex :: String -> ForeignErrorable MultiHostName
 foreign import multiHostName_toJson :: MultiHostName -> String
 foreign import multiHostName_toJsValue :: MultiHostName -> MultiHostNameJson
-foreign import multiHostName_fromJson :: String -> MultiHostName
+foreign import multiHostName_fromJson :: String -> ForeignErrorable MultiHostName
 foreign import multiHostName_dnsName :: MultiHostName -> DNSRecordSRV
 foreign import multiHostName_new :: DNSRecordSRV -> MultiHostName
 
@@ -6252,13 +6288,13 @@ type MultiHostNameClass =
   , toBytes :: MultiHostName -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> MultiHostName
+  , fromBytes :: Bytes -> Maybe MultiHostName
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: MultiHostName -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> MultiHostName
+  , fromHex :: String -> Maybe MultiHostName
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: MultiHostName -> String
@@ -6267,7 +6303,7 @@ type MultiHostNameClass =
   , toJsValue :: MultiHostName -> MultiHostNameJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> MultiHostName
+  , fromJson :: String -> Maybe MultiHostName
     -- ^ From json
     -- > fromJson json
   , dnsName :: MultiHostName -> DNSRecordSRV
@@ -6283,12 +6319,12 @@ multiHostName :: MultiHostNameClass
 multiHostName =
   { free: multiHostName_free
   , toBytes: multiHostName_toBytes
-  , fromBytes: multiHostName_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ multiHostName_fromBytes a1
   , toHex: multiHostName_toHex
-  , fromHex: multiHostName_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ multiHostName_fromHex a1
   , toJson: multiHostName_toJson
   , toJsValue: multiHostName_toJsValue
-  , fromJson: multiHostName_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ multiHostName_fromJson a1
   , dnsName: multiHostName_dnsName
   , new: multiHostName_new
   }
@@ -6319,12 +6355,12 @@ instance IsJson MultiHostName where
 
 foreign import nativeScript_free :: NativeScript -> Effect Unit
 foreign import nativeScript_toBytes :: NativeScript -> Bytes
-foreign import nativeScript_fromBytes :: Bytes -> NativeScript
+foreign import nativeScript_fromBytes :: Bytes -> ForeignErrorable NativeScript
 foreign import nativeScript_toHex :: NativeScript -> String
-foreign import nativeScript_fromHex :: String -> NativeScript
+foreign import nativeScript_fromHex :: String -> ForeignErrorable NativeScript
 foreign import nativeScript_toJson :: NativeScript -> String
 foreign import nativeScript_toJsValue :: NativeScript -> NativeScriptJson
-foreign import nativeScript_fromJson :: String -> NativeScript
+foreign import nativeScript_fromJson :: String -> ForeignErrorable NativeScript
 foreign import nativeScript_hash :: NativeScript -> ScriptHash
 foreign import nativeScript_newScriptPubkey :: ScriptPubkey -> NativeScript
 foreign import nativeScript_newScriptAll :: ScriptAll -> NativeScript
@@ -6349,13 +6385,13 @@ type NativeScriptClass =
   , toBytes :: NativeScript -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> NativeScript
+  , fromBytes :: Bytes -> Maybe NativeScript
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: NativeScript -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> NativeScript
+  , fromHex :: String -> Maybe NativeScript
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: NativeScript -> String
@@ -6364,7 +6400,7 @@ type NativeScriptClass =
   , toJsValue :: NativeScript -> NativeScriptJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> NativeScript
+  , fromJson :: String -> Maybe NativeScript
     -- ^ From json
     -- > fromJson json
   , hash :: NativeScript -> ScriptHash
@@ -6419,12 +6455,12 @@ nativeScript :: NativeScriptClass
 nativeScript =
   { free: nativeScript_free
   , toBytes: nativeScript_toBytes
-  , fromBytes: nativeScript_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ nativeScript_fromBytes a1
   , toHex: nativeScript_toHex
-  , fromHex: nativeScript_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ nativeScript_fromHex a1
   , toJson: nativeScript_toJson
   , toJsValue: nativeScript_toJsValue
-  , fromJson: nativeScript_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ nativeScript_fromJson a1
   , hash: nativeScript_hash
   , newScriptPubkey: nativeScript_newScriptPubkey
   , newScriptAll: nativeScript_newScriptAll
@@ -6517,12 +6553,12 @@ instance MutableLen NativeScripts where
 
 foreign import networkId_free :: NetworkId -> Effect Unit
 foreign import networkId_toBytes :: NetworkId -> Bytes
-foreign import networkId_fromBytes :: Bytes -> NetworkId
+foreign import networkId_fromBytes :: Bytes -> ForeignErrorable NetworkId
 foreign import networkId_toHex :: NetworkId -> String
-foreign import networkId_fromHex :: String -> NetworkId
+foreign import networkId_fromHex :: String -> ForeignErrorable NetworkId
 foreign import networkId_toJson :: NetworkId -> String
 foreign import networkId_toJsValue :: NetworkId -> NetworkIdJson
-foreign import networkId_fromJson :: String -> NetworkId
+foreign import networkId_fromJson :: String -> ForeignErrorable NetworkId
 foreign import networkId_testnet :: NetworkId
 foreign import networkId_mainnet :: NetworkId
 foreign import networkId_kind :: NetworkId -> Number
@@ -6535,13 +6571,13 @@ type NetworkIdClass =
   , toBytes :: NetworkId -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> NetworkId
+  , fromBytes :: Bytes -> Maybe NetworkId
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: NetworkId -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> NetworkId
+  , fromHex :: String -> Maybe NetworkId
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: NetworkId -> String
@@ -6550,7 +6586,7 @@ type NetworkIdClass =
   , toJsValue :: NetworkId -> NetworkIdJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> NetworkId
+  , fromJson :: String -> Maybe NetworkId
     -- ^ From json
     -- > fromJson json
   , testnet :: NetworkId
@@ -6569,12 +6605,12 @@ networkId :: NetworkIdClass
 networkId =
   { free: networkId_free
   , toBytes: networkId_toBytes
-  , fromBytes: networkId_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ networkId_fromBytes a1
   , toHex: networkId_toHex
-  , fromHex: networkId_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ networkId_fromHex a1
   , toJson: networkId_toJson
   , toJsValue: networkId_toJsValue
-  , fromJson: networkId_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ networkId_fromJson a1
   , testnet: networkId_testnet
   , mainnet: networkId_mainnet
   , kind: networkId_kind
@@ -6652,12 +6688,12 @@ instance HasFree NetworkInfo where
 
 foreign import nonce_free :: Nonce -> Effect Unit
 foreign import nonce_toBytes :: Nonce -> Bytes
-foreign import nonce_fromBytes :: Bytes -> Nonce
+foreign import nonce_fromBytes :: Bytes -> ForeignErrorable Nonce
 foreign import nonce_toHex :: Nonce -> String
-foreign import nonce_fromHex :: String -> Nonce
+foreign import nonce_fromHex :: String -> ForeignErrorable Nonce
 foreign import nonce_toJson :: Nonce -> String
 foreign import nonce_toJsValue :: Nonce -> NonceJson
-foreign import nonce_fromJson :: String -> Nonce
+foreign import nonce_fromJson :: String -> ForeignErrorable Nonce
 foreign import nonce_newIdentity :: Nonce
 foreign import nonce_newFromHash :: Bytes -> Nonce
 foreign import nonce_getHash :: Nonce -> Nullable Bytes
@@ -6670,13 +6706,13 @@ type NonceClass =
   , toBytes :: Nonce -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Nonce
+  , fromBytes :: Bytes -> Maybe Nonce
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Nonce -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Nonce
+  , fromHex :: String -> Maybe Nonce
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Nonce -> String
@@ -6685,7 +6721,7 @@ type NonceClass =
   , toJsValue :: Nonce -> NonceJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Nonce
+  , fromJson :: String -> Maybe Nonce
     -- ^ From json
     -- > fromJson json
   , newIdentity :: Nonce
@@ -6704,12 +6740,12 @@ nonce :: NonceClass
 nonce =
   { free: nonce_free
   , toBytes: nonce_toBytes
-  , fromBytes: nonce_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ nonce_fromBytes a1
   , toHex: nonce_toHex
-  , fromHex: nonce_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ nonce_fromHex a1
   , toJson: nonce_toJson
   , toJsValue: nonce_toJsValue
-  , fromJson: nonce_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ nonce_fromJson a1
   , newIdentity: nonce_newIdentity
   , newFromHash: nonce_newFromHash
   , getHash: \a1 -> Nullable.toMaybe $ nonce_getHash a1
@@ -6741,12 +6777,12 @@ instance IsJson Nonce where
 
 foreign import operationalCert_free :: OperationalCert -> Effect Unit
 foreign import operationalCert_toBytes :: OperationalCert -> Bytes
-foreign import operationalCert_fromBytes :: Bytes -> OperationalCert
+foreign import operationalCert_fromBytes :: Bytes -> ForeignErrorable OperationalCert
 foreign import operationalCert_toHex :: OperationalCert -> String
-foreign import operationalCert_fromHex :: String -> OperationalCert
+foreign import operationalCert_fromHex :: String -> ForeignErrorable OperationalCert
 foreign import operationalCert_toJson :: OperationalCert -> String
 foreign import operationalCert_toJsValue :: OperationalCert -> OperationalCertJson
-foreign import operationalCert_fromJson :: String -> OperationalCert
+foreign import operationalCert_fromJson :: String -> ForeignErrorable OperationalCert
 foreign import operationalCert_hotVkey :: OperationalCert -> KESVKey
 foreign import operationalCert_sequenceNumber :: OperationalCert -> Number
 foreign import operationalCert_kesPeriod :: OperationalCert -> Number
@@ -6761,13 +6797,13 @@ type OperationalCertClass =
   , toBytes :: OperationalCert -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> OperationalCert
+  , fromBytes :: Bytes -> Maybe OperationalCert
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: OperationalCert -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> OperationalCert
+  , fromHex :: String -> Maybe OperationalCert
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: OperationalCert -> String
@@ -6776,7 +6812,7 @@ type OperationalCertClass =
   , toJsValue :: OperationalCert -> OperationalCertJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> OperationalCert
+  , fromJson :: String -> Maybe OperationalCert
     -- ^ From json
     -- > fromJson json
   , hotVkey :: OperationalCert -> KESVKey
@@ -6801,12 +6837,12 @@ operationalCert :: OperationalCertClass
 operationalCert =
   { free: operationalCert_free
   , toBytes: operationalCert_toBytes
-  , fromBytes: operationalCert_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ operationalCert_fromBytes a1
   , toHex: operationalCert_toHex
-  , fromHex: operationalCert_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ operationalCert_fromHex a1
   , toJson: operationalCert_toJson
   , toJsValue: operationalCert_toJsValue
-  , fromJson: operationalCert_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ operationalCert_fromJson a1
   , hotVkey: operationalCert_hotVkey
   , sequenceNumber: operationalCert_sequenceNumber
   , kesPeriod: operationalCert_kesPeriod
@@ -6840,12 +6876,12 @@ instance IsJson OperationalCert where
 
 foreign import plutusData_free :: PlutusData -> Effect Unit
 foreign import plutusData_toBytes :: PlutusData -> Bytes
-foreign import plutusData_fromBytes :: Bytes -> PlutusData
+foreign import plutusData_fromBytes :: Bytes -> ForeignErrorable PlutusData
 foreign import plutusData_toHex :: PlutusData -> String
-foreign import plutusData_fromHex :: String -> PlutusData
+foreign import plutusData_fromHex :: String -> ForeignErrorable PlutusData
 foreign import plutusData_toJson :: PlutusData -> String
 foreign import plutusData_toJsValue :: PlutusData -> PlutusDataJson
-foreign import plutusData_fromJson :: String -> PlutusData
+foreign import plutusData_fromJson :: String -> ForeignErrorable PlutusData
 foreign import plutusData_newConstrPlutusData :: ConstrPlutusData -> PlutusData
 foreign import plutusData_newEmptyConstrPlutusData :: BigNum -> PlutusData
 foreign import plutusData_newMap :: PlutusMap -> PlutusData
@@ -6867,13 +6903,13 @@ type PlutusDataClass =
   , toBytes :: PlutusData -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PlutusData
+  , fromBytes :: Bytes -> Maybe PlutusData
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PlutusData -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PlutusData
+  , fromHex :: String -> Maybe PlutusData
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: PlutusData -> String
@@ -6882,7 +6918,7 @@ type PlutusDataClass =
   , toJsValue :: PlutusData -> PlutusDataJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> PlutusData
+  , fromJson :: String -> Maybe PlutusData
     -- ^ From json
     -- > fromJson json
   , newConstrPlutusData :: ConstrPlutusData -> PlutusData
@@ -6928,12 +6964,12 @@ plutusData :: PlutusDataClass
 plutusData =
   { free: plutusData_free
   , toBytes: plutusData_toBytes
-  , fromBytes: plutusData_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ plutusData_fromBytes a1
   , toHex: plutusData_toHex
-  , fromHex: plutusData_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ plutusData_fromHex a1
   , toJson: plutusData_toJson
   , toJsValue: plutusData_toJsValue
-  , fromJson: plutusData_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ plutusData_fromJson a1
   , newConstrPlutusData: plutusData_newConstrPlutusData
   , newEmptyConstrPlutusData: plutusData_newEmptyConstrPlutusData
   , newMap: plutusData_newMap
@@ -6974,12 +7010,12 @@ instance IsJson PlutusData where
 
 foreign import plutusList_free :: PlutusList -> Effect Unit
 foreign import plutusList_toBytes :: PlutusList -> Bytes
-foreign import plutusList_fromBytes :: Bytes -> PlutusList
+foreign import plutusList_fromBytes :: Bytes -> ForeignErrorable PlutusList
 foreign import plutusList_toHex :: PlutusList -> String
-foreign import plutusList_fromHex :: String -> PlutusList
+foreign import plutusList_fromHex :: String -> ForeignErrorable PlutusList
 foreign import plutusList_toJson :: PlutusList -> String
 foreign import plutusList_toJsValue :: PlutusList -> PlutusListJson
-foreign import plutusList_fromJson :: String -> PlutusList
+foreign import plutusList_fromJson :: String -> ForeignErrorable PlutusList
 foreign import plutusList_new :: Effect PlutusList
 foreign import plutusList_len :: PlutusList -> Effect Int
 foreign import plutusList_get :: PlutusList -> Int -> Effect PlutusData
@@ -6993,13 +7029,13 @@ type PlutusListClass =
   , toBytes :: PlutusList -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PlutusList
+  , fromBytes :: Bytes -> Maybe PlutusList
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PlutusList -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PlutusList
+  , fromHex :: String -> Maybe PlutusList
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: PlutusList -> String
@@ -7008,7 +7044,7 @@ type PlutusListClass =
   , toJsValue :: PlutusList -> PlutusListJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> PlutusList
+  , fromJson :: String -> Maybe PlutusList
     -- ^ From json
     -- > fromJson json
   , new :: Effect PlutusList
@@ -7030,12 +7066,12 @@ plutusList :: PlutusListClass
 plutusList =
   { free: plutusList_free
   , toBytes: plutusList_toBytes
-  , fromBytes: plutusList_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ plutusList_fromBytes a1
   , toHex: plutusList_toHex
-  , fromHex: plutusList_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ plutusList_fromHex a1
   , toJson: plutusList_toJson
   , toJsValue: plutusList_toJsValue
-  , fromJson: plutusList_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ plutusList_fromJson a1
   , new: plutusList_new
   , len: plutusList_len
   , get: plutusList_get
@@ -7077,16 +7113,16 @@ instance IsJson PlutusList where
 
 foreign import plutusMap_free :: PlutusMap -> Effect Unit
 foreign import plutusMap_toBytes :: PlutusMap -> Bytes
-foreign import plutusMap_fromBytes :: Bytes -> PlutusMap
+foreign import plutusMap_fromBytes :: Bytes -> ForeignErrorable PlutusMap
 foreign import plutusMap_toHex :: PlutusMap -> String
-foreign import plutusMap_fromHex :: String -> PlutusMap
+foreign import plutusMap_fromHex :: String -> ForeignErrorable PlutusMap
 foreign import plutusMap_toJson :: PlutusMap -> String
 foreign import plutusMap_toJsValue :: PlutusMap -> PlutusMapJson
-foreign import plutusMap_fromJson :: String -> PlutusMap
+foreign import plutusMap_fromJson :: String -> ForeignErrorable PlutusMap
 foreign import plutusMap_new :: Effect PlutusMap
 foreign import plutusMap_len :: PlutusMap -> Effect Int
-foreign import plutusMap_insert :: PlutusMap -> PlutusData -> PlutusData -> Effect (Nullable PlutusData)
-foreign import plutusMap_get :: PlutusMap -> PlutusData -> Effect (Nullable PlutusData)
+foreign import plutusMap_insert :: PlutusMap -> PlutusData -> PlutusData -> Effect ((Nullable PlutusData))
+foreign import plutusMap_get :: PlutusMap -> PlutusData -> Effect ((Nullable PlutusData))
 foreign import plutusMap_keys :: PlutusMap -> Effect PlutusList
 
 -- | Plutus map class
@@ -7097,13 +7133,13 @@ type PlutusMapClass =
   , toBytes :: PlutusMap -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PlutusMap
+  , fromBytes :: Bytes -> Maybe PlutusMap
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PlutusMap -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PlutusMap
+  , fromHex :: String -> Maybe PlutusMap
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: PlutusMap -> String
@@ -7112,7 +7148,7 @@ type PlutusMapClass =
   , toJsValue :: PlutusMap -> PlutusMapJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> PlutusMap
+  , fromJson :: String -> Maybe PlutusMap
     -- ^ From json
     -- > fromJson json
   , new :: Effect PlutusMap
@@ -7121,10 +7157,10 @@ type PlutusMapClass =
   , len :: PlutusMap -> Effect Int
     -- ^ Len
     -- > len self
-  , insert :: PlutusMap -> PlutusData -> PlutusData -> Effect (Maybe PlutusData)
+  , insert :: PlutusMap -> PlutusData -> PlutusData -> Effect ((Maybe PlutusData))
     -- ^ Insert
     -- > insert self key value
-  , get :: PlutusMap -> PlutusData -> Effect (Maybe PlutusData)
+  , get :: PlutusMap -> PlutusData -> Effect ((Maybe PlutusData))
     -- ^ Get
     -- > get self key
   , keys :: PlutusMap -> Effect PlutusList
@@ -7137,12 +7173,12 @@ plutusMap :: PlutusMapClass
 plutusMap =
   { free: plutusMap_free
   , toBytes: plutusMap_toBytes
-  , fromBytes: plutusMap_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ plutusMap_fromBytes a1
   , toHex: plutusMap_toHex
-  , fromHex: plutusMap_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ plutusMap_fromHex a1
   , toJson: plutusMap_toJson
   , toJsValue: plutusMap_toJsValue
-  , fromJson: plutusMap_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ plutusMap_fromJson a1
   , new: plutusMap_new
   , len: plutusMap_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe <$> plutusMap_insert a1 a2 a3
@@ -7176,9 +7212,9 @@ instance IsJson PlutusMap where
 
 foreign import plutusScript_free :: PlutusScript -> Effect Unit
 foreign import plutusScript_toBytes :: PlutusScript -> Bytes
-foreign import plutusScript_fromBytes :: Bytes -> PlutusScript
+foreign import plutusScript_fromBytes :: Bytes -> ForeignErrorable PlutusScript
 foreign import plutusScript_toHex :: PlutusScript -> String
-foreign import plutusScript_fromHex :: String -> PlutusScript
+foreign import plutusScript_fromHex :: String -> ForeignErrorable PlutusScript
 foreign import plutusScript_new :: Bytes -> PlutusScript
 foreign import plutusScript_newV2 :: Bytes -> PlutusScript
 foreign import plutusScript_newWithVersion :: Bytes -> Language -> PlutusScript
@@ -7196,13 +7232,13 @@ type PlutusScriptClass =
   , toBytes :: PlutusScript -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PlutusScript
+  , fromBytes :: Bytes -> Maybe PlutusScript
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PlutusScript -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PlutusScript
+  , fromHex :: String -> Maybe PlutusScript
     -- ^ From hex
     -- > fromHex hexStr
   , new :: Bytes -> PlutusScript
@@ -7236,9 +7272,9 @@ plutusScript :: PlutusScriptClass
 plutusScript =
   { free: plutusScript_free
   , toBytes: plutusScript_toBytes
-  , fromBytes: plutusScript_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ plutusScript_fromBytes a1
   , toHex: plutusScript_toHex
-  , fromHex: plutusScript_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ plutusScript_fromHex a1
   , new: plutusScript_new
   , newV2: plutusScript_newV2
   , newWithVersion: plutusScript_newWithVersion
@@ -7299,12 +7335,12 @@ instance HasFree PlutusScriptSource where
 
 foreign import plutusScripts_free :: PlutusScripts -> Effect Unit
 foreign import plutusScripts_toBytes :: PlutusScripts -> Bytes
-foreign import plutusScripts_fromBytes :: Bytes -> PlutusScripts
+foreign import plutusScripts_fromBytes :: Bytes -> ForeignErrorable PlutusScripts
 foreign import plutusScripts_toHex :: PlutusScripts -> String
-foreign import plutusScripts_fromHex :: String -> PlutusScripts
+foreign import plutusScripts_fromHex :: String -> ForeignErrorable PlutusScripts
 foreign import plutusScripts_toJson :: PlutusScripts -> String
 foreign import plutusScripts_toJsValue :: PlutusScripts -> PlutusScriptsJson
-foreign import plutusScripts_fromJson :: String -> PlutusScripts
+foreign import plutusScripts_fromJson :: String -> ForeignErrorable PlutusScripts
 foreign import plutusScripts_new :: Effect PlutusScripts
 foreign import plutusScripts_len :: PlutusScripts -> Effect Int
 foreign import plutusScripts_get :: PlutusScripts -> Int -> Effect PlutusScript
@@ -7318,13 +7354,13 @@ type PlutusScriptsClass =
   , toBytes :: PlutusScripts -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PlutusScripts
+  , fromBytes :: Bytes -> Maybe PlutusScripts
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PlutusScripts -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PlutusScripts
+  , fromHex :: String -> Maybe PlutusScripts
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: PlutusScripts -> String
@@ -7333,7 +7369,7 @@ type PlutusScriptsClass =
   , toJsValue :: PlutusScripts -> PlutusScriptsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> PlutusScripts
+  , fromJson :: String -> Maybe PlutusScripts
     -- ^ From json
     -- > fromJson json
   , new :: Effect PlutusScripts
@@ -7355,12 +7391,12 @@ plutusScripts :: PlutusScriptsClass
 plutusScripts =
   { free: plutusScripts_free
   , toBytes: plutusScripts_toBytes
-  , fromBytes: plutusScripts_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ plutusScripts_fromBytes a1
   , toHex: plutusScripts_toHex
-  , fromHex: plutusScripts_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ plutusScripts_fromHex a1
   , toJson: plutusScripts_toJson
   , toJsValue: plutusScripts_toJsValue
-  , fromJson: plutusScripts_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ plutusScripts_fromJson a1
   , new: plutusScripts_new
   , len: plutusScripts_len
   , get: plutusScripts_get
@@ -7604,12 +7640,12 @@ instance HasFree PointerAddress where
 
 foreign import poolMetadata_free :: PoolMetadata -> Effect Unit
 foreign import poolMetadata_toBytes :: PoolMetadata -> Bytes
-foreign import poolMetadata_fromBytes :: Bytes -> PoolMetadata
+foreign import poolMetadata_fromBytes :: Bytes -> ForeignErrorable PoolMetadata
 foreign import poolMetadata_toHex :: PoolMetadata -> String
-foreign import poolMetadata_fromHex :: String -> PoolMetadata
+foreign import poolMetadata_fromHex :: String -> ForeignErrorable PoolMetadata
 foreign import poolMetadata_toJson :: PoolMetadata -> String
 foreign import poolMetadata_toJsValue :: PoolMetadata -> PoolMetadataJson
-foreign import poolMetadata_fromJson :: String -> PoolMetadata
+foreign import poolMetadata_fromJson :: String -> ForeignErrorable PoolMetadata
 foreign import poolMetadata_url :: PoolMetadata -> URL
 foreign import poolMetadata_poolMetadataHash :: PoolMetadata -> PoolMetadataHash
 foreign import poolMetadata_new :: URL -> PoolMetadataHash -> PoolMetadata
@@ -7622,13 +7658,13 @@ type PoolMetadataClass =
   , toBytes :: PoolMetadata -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PoolMetadata
+  , fromBytes :: Bytes -> Maybe PoolMetadata
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PoolMetadata -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PoolMetadata
+  , fromHex :: String -> Maybe PoolMetadata
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: PoolMetadata -> String
@@ -7637,7 +7673,7 @@ type PoolMetadataClass =
   , toJsValue :: PoolMetadata -> PoolMetadataJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> PoolMetadata
+  , fromJson :: String -> Maybe PoolMetadata
     -- ^ From json
     -- > fromJson json
   , url :: PoolMetadata -> URL
@@ -7656,12 +7692,12 @@ poolMetadata :: PoolMetadataClass
 poolMetadata =
   { free: poolMetadata_free
   , toBytes: poolMetadata_toBytes
-  , fromBytes: poolMetadata_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ poolMetadata_fromBytes a1
   , toHex: poolMetadata_toHex
-  , fromHex: poolMetadata_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ poolMetadata_fromHex a1
   , toJson: poolMetadata_toJson
   , toJsValue: poolMetadata_toJsValue
-  , fromJson: poolMetadata_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ poolMetadata_fromJson a1
   , url: poolMetadata_url
   , poolMetadataHash: poolMetadata_poolMetadataHash
   , new: poolMetadata_new
@@ -7692,19 +7728,19 @@ instance IsJson PoolMetadata where
 -- Pool metadata hash
 
 foreign import poolMetadataHash_free :: PoolMetadataHash -> Effect Unit
-foreign import poolMetadataHash_fromBytes :: Bytes -> PoolMetadataHash
+foreign import poolMetadataHash_fromBytes :: Bytes -> ForeignErrorable PoolMetadataHash
 foreign import poolMetadataHash_toBytes :: PoolMetadataHash -> Bytes
 foreign import poolMetadataHash_toBech32 :: PoolMetadataHash -> String -> String
-foreign import poolMetadataHash_fromBech32 :: String -> PoolMetadataHash
+foreign import poolMetadataHash_fromBech32 :: String -> ForeignErrorable PoolMetadataHash
 foreign import poolMetadataHash_toHex :: PoolMetadataHash -> String
-foreign import poolMetadataHash_fromHex :: String -> PoolMetadataHash
+foreign import poolMetadataHash_fromHex :: String -> ForeignErrorable PoolMetadataHash
 
 -- | Pool metadata hash class
 type PoolMetadataHashClass =
   { free :: PoolMetadataHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> PoolMetadataHash
+  , fromBytes :: Bytes -> Maybe PoolMetadataHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: PoolMetadataHash -> Bytes
@@ -7713,13 +7749,13 @@ type PoolMetadataHashClass =
   , toBech32 :: PoolMetadataHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> PoolMetadataHash
+  , fromBech32 :: String -> Maybe PoolMetadataHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: PoolMetadataHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PoolMetadataHash
+  , fromHex :: String -> Maybe PoolMetadataHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -7728,12 +7764,12 @@ type PoolMetadataHashClass =
 poolMetadataHash :: PoolMetadataHashClass
 poolMetadataHash =
   { free: poolMetadataHash_free
-  , fromBytes: poolMetadataHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ poolMetadataHash_fromBytes a1
   , toBytes: poolMetadataHash_toBytes
   , toBech32: poolMetadataHash_toBech32
-  , fromBech32: poolMetadataHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ poolMetadataHash_fromBech32 a1
   , toHex: poolMetadataHash_toHex
-  , fromHex: poolMetadataHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ poolMetadataHash_fromHex a1
   }
 
 instance HasFree PoolMetadataHash where
@@ -7755,12 +7791,12 @@ instance IsBytes PoolMetadataHash where
 
 foreign import poolParams_free :: PoolParams -> Effect Unit
 foreign import poolParams_toBytes :: PoolParams -> Bytes
-foreign import poolParams_fromBytes :: Bytes -> PoolParams
+foreign import poolParams_fromBytes :: Bytes -> ForeignErrorable PoolParams
 foreign import poolParams_toHex :: PoolParams -> String
-foreign import poolParams_fromHex :: String -> PoolParams
+foreign import poolParams_fromHex :: String -> ForeignErrorable PoolParams
 foreign import poolParams_toJson :: PoolParams -> String
 foreign import poolParams_toJsValue :: PoolParams -> PoolParamsJson
-foreign import poolParams_fromJson :: String -> PoolParams
+foreign import poolParams_fromJson :: String -> ForeignErrorable PoolParams
 foreign import poolParams_operator :: PoolParams -> Ed25519KeyHash
 foreign import poolParams_vrfKeyhash :: PoolParams -> VRFKeyHash
 foreign import poolParams_pledge :: PoolParams -> BigNum
@@ -7780,13 +7816,13 @@ type PoolParamsClass =
   , toBytes :: PoolParams -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PoolParams
+  , fromBytes :: Bytes -> Maybe PoolParams
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PoolParams -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PoolParams
+  , fromHex :: String -> Maybe PoolParams
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: PoolParams -> String
@@ -7795,7 +7831,7 @@ type PoolParamsClass =
   , toJsValue :: PoolParams -> PoolParamsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> PoolParams
+  , fromJson :: String -> Maybe PoolParams
     -- ^ From json
     -- > fromJson json
   , operator :: PoolParams -> Ed25519KeyHash
@@ -7835,12 +7871,12 @@ poolParams :: PoolParamsClass
 poolParams =
   { free: poolParams_free
   , toBytes: poolParams_toBytes
-  , fromBytes: poolParams_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ poolParams_fromBytes a1
   , toHex: poolParams_toHex
-  , fromHex: poolParams_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ poolParams_fromHex a1
   , toJson: poolParams_toJson
   , toJsValue: poolParams_toJsValue
-  , fromJson: poolParams_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ poolParams_fromJson a1
   , operator: poolParams_operator
   , vrfKeyhash: poolParams_vrfKeyhash
   , pledge: poolParams_pledge
@@ -7879,12 +7915,12 @@ instance IsJson PoolParams where
 
 foreign import poolRegistration_free :: PoolRegistration -> Effect Unit
 foreign import poolRegistration_toBytes :: PoolRegistration -> Bytes
-foreign import poolRegistration_fromBytes :: Bytes -> PoolRegistration
+foreign import poolRegistration_fromBytes :: Bytes -> ForeignErrorable PoolRegistration
 foreign import poolRegistration_toHex :: PoolRegistration -> String
-foreign import poolRegistration_fromHex :: String -> PoolRegistration
+foreign import poolRegistration_fromHex :: String -> ForeignErrorable PoolRegistration
 foreign import poolRegistration_toJson :: PoolRegistration -> String
 foreign import poolRegistration_toJsValue :: PoolRegistration -> PoolRegistrationJson
-foreign import poolRegistration_fromJson :: String -> PoolRegistration
+foreign import poolRegistration_fromJson :: String -> ForeignErrorable PoolRegistration
 foreign import poolRegistration_poolParams :: PoolRegistration -> PoolParams
 foreign import poolRegistration_new :: PoolParams -> PoolRegistration
 
@@ -7896,13 +7932,13 @@ type PoolRegistrationClass =
   , toBytes :: PoolRegistration -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PoolRegistration
+  , fromBytes :: Bytes -> Maybe PoolRegistration
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PoolRegistration -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PoolRegistration
+  , fromHex :: String -> Maybe PoolRegistration
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: PoolRegistration -> String
@@ -7911,7 +7947,7 @@ type PoolRegistrationClass =
   , toJsValue :: PoolRegistration -> PoolRegistrationJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> PoolRegistration
+  , fromJson :: String -> Maybe PoolRegistration
     -- ^ From json
     -- > fromJson json
   , poolParams :: PoolRegistration -> PoolParams
@@ -7927,12 +7963,12 @@ poolRegistration :: PoolRegistrationClass
 poolRegistration =
   { free: poolRegistration_free
   , toBytes: poolRegistration_toBytes
-  , fromBytes: poolRegistration_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ poolRegistration_fromBytes a1
   , toHex: poolRegistration_toHex
-  , fromHex: poolRegistration_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ poolRegistration_fromHex a1
   , toJson: poolRegistration_toJson
   , toJsValue: poolRegistration_toJsValue
-  , fromJson: poolRegistration_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ poolRegistration_fromJson a1
   , poolParams: poolRegistration_poolParams
   , new: poolRegistration_new
   }
@@ -7963,12 +7999,12 @@ instance IsJson PoolRegistration where
 
 foreign import poolRetirement_free :: PoolRetirement -> Effect Unit
 foreign import poolRetirement_toBytes :: PoolRetirement -> Bytes
-foreign import poolRetirement_fromBytes :: Bytes -> PoolRetirement
+foreign import poolRetirement_fromBytes :: Bytes -> ForeignErrorable PoolRetirement
 foreign import poolRetirement_toHex :: PoolRetirement -> String
-foreign import poolRetirement_fromHex :: String -> PoolRetirement
+foreign import poolRetirement_fromHex :: String -> ForeignErrorable PoolRetirement
 foreign import poolRetirement_toJson :: PoolRetirement -> String
 foreign import poolRetirement_toJsValue :: PoolRetirement -> PoolRetirementJson
-foreign import poolRetirement_fromJson :: String -> PoolRetirement
+foreign import poolRetirement_fromJson :: String -> ForeignErrorable PoolRetirement
 foreign import poolRetirement_poolKeyhash :: PoolRetirement -> Ed25519KeyHash
 foreign import poolRetirement_epoch :: PoolRetirement -> Number
 foreign import poolRetirement_new :: Ed25519KeyHash -> Number -> PoolRetirement
@@ -7981,13 +8017,13 @@ type PoolRetirementClass =
   , toBytes :: PoolRetirement -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> PoolRetirement
+  , fromBytes :: Bytes -> Maybe PoolRetirement
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: PoolRetirement -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PoolRetirement
+  , fromHex :: String -> Maybe PoolRetirement
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: PoolRetirement -> String
@@ -7996,7 +8032,7 @@ type PoolRetirementClass =
   , toJsValue :: PoolRetirement -> PoolRetirementJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> PoolRetirement
+  , fromJson :: String -> Maybe PoolRetirement
     -- ^ From json
     -- > fromJson json
   , poolKeyhash :: PoolRetirement -> Ed25519KeyHash
@@ -8015,12 +8051,12 @@ poolRetirement :: PoolRetirementClass
 poolRetirement =
   { free: poolRetirement_free
   , toBytes: poolRetirement_toBytes
-  , fromBytes: poolRetirement_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ poolRetirement_fromBytes a1
   , toHex: poolRetirement_toHex
-  , fromHex: poolRetirement_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ poolRetirement_fromHex a1
   , toJson: poolRetirement_toJson
   , toJsValue: poolRetirement_toJsValue
-  , fromJson: poolRetirement_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ poolRetirement_fromJson a1
   , poolKeyhash: poolRetirement_poolKeyhash
   , epoch: poolRetirement_epoch
   , new: poolRetirement_new
@@ -8054,14 +8090,14 @@ foreign import privateKey_free :: PrivateKey -> Effect Unit
 foreign import privateKey_toPublic :: PrivateKey -> PublicKey
 foreign import privateKey_generateEd25519 :: PrivateKey
 foreign import privateKey_generateEd25519extended :: PrivateKey
-foreign import privateKey_fromBech32 :: String -> PrivateKey
+foreign import privateKey_fromBech32 :: String -> ForeignErrorable PrivateKey
 foreign import privateKey_toBech32 :: PrivateKey -> String
 foreign import privateKey_asBytes :: PrivateKey -> Bytes
 foreign import privateKey_fromExtendedBytes :: Bytes -> PrivateKey
 foreign import privateKey_fromNormalBytes :: Bytes -> PrivateKey
 foreign import privateKey_sign :: PrivateKey -> Bytes -> Ed25519Signature
 foreign import privateKey_toHex :: PrivateKey -> String
-foreign import privateKey_fromHex :: String -> PrivateKey
+foreign import privateKey_fromHex :: String -> ForeignErrorable PrivateKey
 
 -- | Private key class
 type PrivateKeyClass =
@@ -8077,7 +8113,7 @@ type PrivateKeyClass =
   , generateEd25519extended :: PrivateKey
     -- ^ Generate ed25519extended
     -- > generateEd25519extended
-  , fromBech32 :: String -> PrivateKey
+  , fromBech32 :: String -> Maybe PrivateKey
     -- ^ From bech32
     -- > fromBech32 bech32Str
   , toBech32 :: PrivateKey -> String
@@ -8098,7 +8134,7 @@ type PrivateKeyClass =
   , toHex :: PrivateKey -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PrivateKey
+  , fromHex :: String -> Maybe PrivateKey
     -- ^ From hex
     -- > fromHex hexStr
   }
@@ -8110,14 +8146,14 @@ privateKey =
   , toPublic: privateKey_toPublic
   , generateEd25519: privateKey_generateEd25519
   , generateEd25519extended: privateKey_generateEd25519extended
-  , fromBech32: privateKey_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ privateKey_fromBech32 a1
   , toBech32: privateKey_toBech32
   , asBytes: privateKey_asBytes
   , fromExtendedBytes: privateKey_fromExtendedBytes
   , fromNormalBytes: privateKey_fromNormalBytes
   , sign: privateKey_sign
   , toHex: privateKey_toHex
-  , fromHex: privateKey_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ privateKey_fromHex a1
   }
 
 instance HasFree PrivateKey where
@@ -8139,16 +8175,16 @@ instance IsBech32 PrivateKey where
 
 foreign import proposedProtocolParameterUpdates_free :: ProposedProtocolParameterUpdates -> Effect Unit
 foreign import proposedProtocolParameterUpdates_toBytes :: ProposedProtocolParameterUpdates -> Bytes
-foreign import proposedProtocolParameterUpdates_fromBytes :: Bytes -> ProposedProtocolParameterUpdates
+foreign import proposedProtocolParameterUpdates_fromBytes :: Bytes -> ForeignErrorable ProposedProtocolParameterUpdates
 foreign import proposedProtocolParameterUpdates_toHex :: ProposedProtocolParameterUpdates -> String
-foreign import proposedProtocolParameterUpdates_fromHex :: String -> ProposedProtocolParameterUpdates
+foreign import proposedProtocolParameterUpdates_fromHex :: String -> ForeignErrorable ProposedProtocolParameterUpdates
 foreign import proposedProtocolParameterUpdates_toJson :: ProposedProtocolParameterUpdates -> String
 foreign import proposedProtocolParameterUpdates_toJsValue :: ProposedProtocolParameterUpdates -> ProposedProtocolParameterUpdatesJson
-foreign import proposedProtocolParameterUpdates_fromJson :: String -> ProposedProtocolParameterUpdates
+foreign import proposedProtocolParameterUpdates_fromJson :: String -> ForeignErrorable ProposedProtocolParameterUpdates
 foreign import proposedProtocolParameterUpdates_new :: Effect ProposedProtocolParameterUpdates
 foreign import proposedProtocolParameterUpdates_len :: ProposedProtocolParameterUpdates -> Effect Int
-foreign import proposedProtocolParameterUpdates_insert :: ProposedProtocolParameterUpdates -> GenesisHash -> ProtocolParamUpdate -> Effect (Nullable ProtocolParamUpdate)
-foreign import proposedProtocolParameterUpdates_get :: ProposedProtocolParameterUpdates -> GenesisHash -> Effect (Nullable ProtocolParamUpdate)
+foreign import proposedProtocolParameterUpdates_insert :: ProposedProtocolParameterUpdates -> GenesisHash -> ProtocolParamUpdate -> Effect ((Nullable ProtocolParamUpdate))
+foreign import proposedProtocolParameterUpdates_get :: ProposedProtocolParameterUpdates -> GenesisHash -> Effect ((Nullable ProtocolParamUpdate))
 foreign import proposedProtocolParameterUpdates_keys :: ProposedProtocolParameterUpdates -> Effect GenesisHashes
 
 -- | Proposed protocol parameter updates class
@@ -8159,13 +8195,13 @@ type ProposedProtocolParameterUpdatesClass =
   , toBytes :: ProposedProtocolParameterUpdates -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ProposedProtocolParameterUpdates
+  , fromBytes :: Bytes -> Maybe ProposedProtocolParameterUpdates
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ProposedProtocolParameterUpdates -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ProposedProtocolParameterUpdates
+  , fromHex :: String -> Maybe ProposedProtocolParameterUpdates
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ProposedProtocolParameterUpdates -> String
@@ -8174,7 +8210,7 @@ type ProposedProtocolParameterUpdatesClass =
   , toJsValue :: ProposedProtocolParameterUpdates -> ProposedProtocolParameterUpdatesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ProposedProtocolParameterUpdates
+  , fromJson :: String -> Maybe ProposedProtocolParameterUpdates
     -- ^ From json
     -- > fromJson json
   , new :: Effect ProposedProtocolParameterUpdates
@@ -8183,10 +8219,10 @@ type ProposedProtocolParameterUpdatesClass =
   , len :: ProposedProtocolParameterUpdates -> Effect Int
     -- ^ Len
     -- > len self
-  , insert :: ProposedProtocolParameterUpdates -> GenesisHash -> ProtocolParamUpdate -> Effect (Maybe ProtocolParamUpdate)
+  , insert :: ProposedProtocolParameterUpdates -> GenesisHash -> ProtocolParamUpdate -> Effect ((Maybe ProtocolParamUpdate))
     -- ^ Insert
     -- > insert self key value
-  , get :: ProposedProtocolParameterUpdates -> GenesisHash -> Effect (Maybe ProtocolParamUpdate)
+  , get :: ProposedProtocolParameterUpdates -> GenesisHash -> Effect ((Maybe ProtocolParamUpdate))
     -- ^ Get
     -- > get self key
   , keys :: ProposedProtocolParameterUpdates -> Effect GenesisHashes
@@ -8199,12 +8235,12 @@ proposedProtocolParameterUpdates :: ProposedProtocolParameterUpdatesClass
 proposedProtocolParameterUpdates =
   { free: proposedProtocolParameterUpdates_free
   , toBytes: proposedProtocolParameterUpdates_toBytes
-  , fromBytes: proposedProtocolParameterUpdates_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ proposedProtocolParameterUpdates_fromBytes a1
   , toHex: proposedProtocolParameterUpdates_toHex
-  , fromHex: proposedProtocolParameterUpdates_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ proposedProtocolParameterUpdates_fromHex a1
   , toJson: proposedProtocolParameterUpdates_toJson
   , toJsValue: proposedProtocolParameterUpdates_toJsValue
-  , fromJson: proposedProtocolParameterUpdates_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ proposedProtocolParameterUpdates_fromJson a1
   , new: proposedProtocolParameterUpdates_new
   , len: proposedProtocolParameterUpdates_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe <$> proposedProtocolParameterUpdates_insert a1 a2 a3
@@ -8238,12 +8274,12 @@ instance IsJson ProposedProtocolParameterUpdates where
 
 foreign import protocolParamUpdate_free :: ProtocolParamUpdate -> Effect Unit
 foreign import protocolParamUpdate_toBytes :: ProtocolParamUpdate -> Bytes
-foreign import protocolParamUpdate_fromBytes :: Bytes -> ProtocolParamUpdate
+foreign import protocolParamUpdate_fromBytes :: Bytes -> ForeignErrorable ProtocolParamUpdate
 foreign import protocolParamUpdate_toHex :: ProtocolParamUpdate -> String
-foreign import protocolParamUpdate_fromHex :: String -> ProtocolParamUpdate
+foreign import protocolParamUpdate_fromHex :: String -> ForeignErrorable ProtocolParamUpdate
 foreign import protocolParamUpdate_toJson :: ProtocolParamUpdate -> String
 foreign import protocolParamUpdate_toJsValue :: ProtocolParamUpdate -> ProtocolParamUpdateJson
-foreign import protocolParamUpdate_fromJson :: String -> ProtocolParamUpdate
+foreign import protocolParamUpdate_fromJson :: String -> ForeignErrorable ProtocolParamUpdate
 foreign import protocolParamUpdate_setMinfeeA :: ProtocolParamUpdate -> BigNum -> Effect Unit
 foreign import protocolParamUpdate_minfeeA :: ProtocolParamUpdate -> Nullable BigNum
 foreign import protocolParamUpdate_setMinfeeB :: ProtocolParamUpdate -> BigNum -> Effect Unit
@@ -8300,13 +8336,13 @@ type ProtocolParamUpdateClass =
   , toBytes :: ProtocolParamUpdate -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ProtocolParamUpdate
+  , fromBytes :: Bytes -> Maybe ProtocolParamUpdate
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ProtocolParamUpdate -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ProtocolParamUpdate
+  , fromHex :: String -> Maybe ProtocolParamUpdate
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ProtocolParamUpdate -> String
@@ -8315,7 +8351,7 @@ type ProtocolParamUpdateClass =
   , toJsValue :: ProtocolParamUpdate -> ProtocolParamUpdateJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ProtocolParamUpdate
+  , fromJson :: String -> Maybe ProtocolParamUpdate
     -- ^ From json
     -- > fromJson json
   , setMinfeeA :: ProtocolParamUpdate -> BigNum -> Effect Unit
@@ -8466,12 +8502,12 @@ protocolParamUpdate :: ProtocolParamUpdateClass
 protocolParamUpdate =
   { free: protocolParamUpdate_free
   , toBytes: protocolParamUpdate_toBytes
-  , fromBytes: protocolParamUpdate_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ protocolParamUpdate_fromBytes a1
   , toHex: protocolParamUpdate_toHex
-  , fromHex: protocolParamUpdate_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ protocolParamUpdate_fromHex a1
   , toJson: protocolParamUpdate_toJson
   , toJsValue: protocolParamUpdate_toJsValue
-  , fromJson: protocolParamUpdate_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ protocolParamUpdate_fromJson a1
   , setMinfeeA: protocolParamUpdate_setMinfeeA
   , minfeeA: \a1 -> Nullable.toMaybe $ protocolParamUpdate_minfeeA a1
   , setMinfeeB: protocolParamUpdate_setMinfeeB
@@ -8547,12 +8583,12 @@ instance IsJson ProtocolParamUpdate where
 
 foreign import protocolVersion_free :: ProtocolVersion -> Effect Unit
 foreign import protocolVersion_toBytes :: ProtocolVersion -> Bytes
-foreign import protocolVersion_fromBytes :: Bytes -> ProtocolVersion
+foreign import protocolVersion_fromBytes :: Bytes -> ForeignErrorable ProtocolVersion
 foreign import protocolVersion_toHex :: ProtocolVersion -> String
-foreign import protocolVersion_fromHex :: String -> ProtocolVersion
+foreign import protocolVersion_fromHex :: String -> ForeignErrorable ProtocolVersion
 foreign import protocolVersion_toJson :: ProtocolVersion -> String
 foreign import protocolVersion_toJsValue :: ProtocolVersion -> ProtocolVersionJson
-foreign import protocolVersion_fromJson :: String -> ProtocolVersion
+foreign import protocolVersion_fromJson :: String -> ForeignErrorable ProtocolVersion
 foreign import protocolVersion_major :: ProtocolVersion -> Number
 foreign import protocolVersion_minor :: ProtocolVersion -> Number
 foreign import protocolVersion_new :: Number -> Number -> ProtocolVersion
@@ -8565,13 +8601,13 @@ type ProtocolVersionClass =
   , toBytes :: ProtocolVersion -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ProtocolVersion
+  , fromBytes :: Bytes -> Maybe ProtocolVersion
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ProtocolVersion -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ProtocolVersion
+  , fromHex :: String -> Maybe ProtocolVersion
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ProtocolVersion -> String
@@ -8580,7 +8616,7 @@ type ProtocolVersionClass =
   , toJsValue :: ProtocolVersion -> ProtocolVersionJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ProtocolVersion
+  , fromJson :: String -> Maybe ProtocolVersion
     -- ^ From json
     -- > fromJson json
   , major :: ProtocolVersion -> Number
@@ -8599,12 +8635,12 @@ protocolVersion :: ProtocolVersionClass
 protocolVersion =
   { free: protocolVersion_free
   , toBytes: protocolVersion_toBytes
-  , fromBytes: protocolVersion_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ protocolVersion_fromBytes a1
   , toHex: protocolVersion_toHex
-  , fromHex: protocolVersion_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ protocolVersion_fromHex a1
   , toJson: protocolVersion_toJson
   , toJsValue: protocolVersion_toJsValue
-  , fromJson: protocolVersion_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ protocolVersion_fromJson a1
   , major: protocolVersion_major
   , minor: protocolVersion_minor
   , new: protocolVersion_new
@@ -8635,21 +8671,21 @@ instance IsJson ProtocolVersion where
 -- Public key
 
 foreign import publicKey_free :: PublicKey -> Effect Unit
-foreign import publicKey_fromBech32 :: String -> PublicKey
+foreign import publicKey_fromBech32 :: String -> ForeignErrorable PublicKey
 foreign import publicKey_toBech32 :: PublicKey -> String
 foreign import publicKey_asBytes :: PublicKey -> Bytes
-foreign import publicKey_fromBytes :: Bytes -> PublicKey
+foreign import publicKey_fromBytes :: Bytes -> ForeignErrorable PublicKey
 foreign import publicKey_verify :: PublicKey -> Bytes -> Ed25519Signature -> Boolean
 foreign import publicKey_hash :: PublicKey -> Ed25519KeyHash
 foreign import publicKey_toHex :: PublicKey -> String
-foreign import publicKey_fromHex :: String -> PublicKey
+foreign import publicKey_fromHex :: String -> ForeignErrorable PublicKey
 
 -- | Public key class
 type PublicKeyClass =
   { free :: PublicKey -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBech32 :: String -> PublicKey
+  , fromBech32 :: String -> Maybe PublicKey
     -- ^ From bech32
     -- > fromBech32 bech32Str
   , toBech32 :: PublicKey -> String
@@ -8658,7 +8694,7 @@ type PublicKeyClass =
   , asBytes :: PublicKey -> Bytes
     -- ^ As bytes
     -- > asBytes self
-  , fromBytes :: Bytes -> PublicKey
+  , fromBytes :: Bytes -> Maybe PublicKey
     -- ^ From bytes
     -- > fromBytes bytes
   , verify :: PublicKey -> Bytes -> Ed25519Signature -> Boolean
@@ -8670,7 +8706,7 @@ type PublicKeyClass =
   , toHex :: PublicKey -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> PublicKey
+  , fromHex :: String -> Maybe PublicKey
     -- ^ From hex
     -- > fromHex hexStr
   }
@@ -8679,14 +8715,14 @@ type PublicKeyClass =
 publicKey :: PublicKeyClass
 publicKey =
   { free: publicKey_free
-  , fromBech32: publicKey_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ publicKey_fromBech32 a1
   , toBech32: publicKey_toBech32
   , asBytes: publicKey_asBytes
-  , fromBytes: publicKey_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ publicKey_fromBytes a1
   , verify: publicKey_verify
   , hash: publicKey_hash
   , toHex: publicKey_toHex
-  , fromHex: publicKey_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ publicKey_fromHex a1
   }
 
 instance HasFree PublicKey where
@@ -8749,12 +8785,12 @@ instance HasFree PublicKeys where
 
 foreign import redeemer_free :: Redeemer -> Effect Unit
 foreign import redeemer_toBytes :: Redeemer -> Bytes
-foreign import redeemer_fromBytes :: Bytes -> Redeemer
+foreign import redeemer_fromBytes :: Bytes -> ForeignErrorable Redeemer
 foreign import redeemer_toHex :: Redeemer -> String
-foreign import redeemer_fromHex :: String -> Redeemer
+foreign import redeemer_fromHex :: String -> ForeignErrorable Redeemer
 foreign import redeemer_toJson :: Redeemer -> String
 foreign import redeemer_toJsValue :: Redeemer -> RedeemerJson
-foreign import redeemer_fromJson :: String -> Redeemer
+foreign import redeemer_fromJson :: String -> ForeignErrorable Redeemer
 foreign import redeemer_tag :: Redeemer -> RedeemerTag
 foreign import redeemer_index :: Redeemer -> BigNum
 foreign import redeemer_data :: Redeemer -> PlutusData
@@ -8769,13 +8805,13 @@ type RedeemerClass =
   , toBytes :: Redeemer -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Redeemer
+  , fromBytes :: Bytes -> Maybe Redeemer
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Redeemer -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Redeemer
+  , fromHex :: String -> Maybe Redeemer
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Redeemer -> String
@@ -8784,7 +8820,7 @@ type RedeemerClass =
   , toJsValue :: Redeemer -> RedeemerJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Redeemer
+  , fromJson :: String -> Maybe Redeemer
     -- ^ From json
     -- > fromJson json
   , tag :: Redeemer -> RedeemerTag
@@ -8809,12 +8845,12 @@ redeemer :: RedeemerClass
 redeemer =
   { free: redeemer_free
   , toBytes: redeemer_toBytes
-  , fromBytes: redeemer_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ redeemer_fromBytes a1
   , toHex: redeemer_toHex
-  , fromHex: redeemer_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ redeemer_fromHex a1
   , toJson: redeemer_toJson
   , toJsValue: redeemer_toJsValue
-  , fromJson: redeemer_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ redeemer_fromJson a1
   , tag: redeemer_tag
   , index: redeemer_index
   , data: redeemer_data
@@ -8848,12 +8884,12 @@ instance IsJson Redeemer where
 
 foreign import redeemerTag_free :: RedeemerTag -> Effect Unit
 foreign import redeemerTag_toBytes :: RedeemerTag -> Bytes
-foreign import redeemerTag_fromBytes :: Bytes -> RedeemerTag
+foreign import redeemerTag_fromBytes :: Bytes -> ForeignErrorable RedeemerTag
 foreign import redeemerTag_toHex :: RedeemerTag -> String
-foreign import redeemerTag_fromHex :: String -> RedeemerTag
+foreign import redeemerTag_fromHex :: String -> ForeignErrorable RedeemerTag
 foreign import redeemerTag_toJson :: RedeemerTag -> String
 foreign import redeemerTag_toJsValue :: RedeemerTag -> RedeemerTagJson
-foreign import redeemerTag_fromJson :: String -> RedeemerTag
+foreign import redeemerTag_fromJson :: String -> ForeignErrorable RedeemerTag
 foreign import redeemerTag_newSpend :: RedeemerTag
 foreign import redeemerTag_newMint :: RedeemerTag
 foreign import redeemerTag_newCert :: RedeemerTag
@@ -8868,13 +8904,13 @@ type RedeemerTagClass =
   , toBytes :: RedeemerTag -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> RedeemerTag
+  , fromBytes :: Bytes -> Maybe RedeemerTag
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: RedeemerTag -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> RedeemerTag
+  , fromHex :: String -> Maybe RedeemerTag
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: RedeemerTag -> String
@@ -8883,7 +8919,7 @@ type RedeemerTagClass =
   , toJsValue :: RedeemerTag -> RedeemerTagJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> RedeemerTag
+  , fromJson :: String -> Maybe RedeemerTag
     -- ^ From json
     -- > fromJson json
   , newSpend :: RedeemerTag
@@ -8908,12 +8944,12 @@ redeemerTag :: RedeemerTagClass
 redeemerTag =
   { free: redeemerTag_free
   , toBytes: redeemerTag_toBytes
-  , fromBytes: redeemerTag_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ redeemerTag_fromBytes a1
   , toHex: redeemerTag_toHex
-  , fromHex: redeemerTag_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ redeemerTag_fromHex a1
   , toJson: redeemerTag_toJson
   , toJsValue: redeemerTag_toJsValue
-  , fromJson: redeemerTag_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ redeemerTag_fromJson a1
   , newSpend: redeemerTag_newSpend
   , newMint: redeemerTag_newMint
   , newCert: redeemerTag_newCert
@@ -8947,12 +8983,12 @@ instance IsJson RedeemerTag where
 
 foreign import redeemers_free :: Redeemers -> Effect Unit
 foreign import redeemers_toBytes :: Redeemers -> Bytes
-foreign import redeemers_fromBytes :: Bytes -> Redeemers
+foreign import redeemers_fromBytes :: Bytes -> ForeignErrorable Redeemers
 foreign import redeemers_toHex :: Redeemers -> String
-foreign import redeemers_fromHex :: String -> Redeemers
+foreign import redeemers_fromHex :: String -> ForeignErrorable Redeemers
 foreign import redeemers_toJson :: Redeemers -> String
 foreign import redeemers_toJsValue :: Redeemers -> RedeemersJson
-foreign import redeemers_fromJson :: String -> Redeemers
+foreign import redeemers_fromJson :: String -> ForeignErrorable Redeemers
 foreign import redeemers_new :: Effect Redeemers
 foreign import redeemers_len :: Redeemers -> Effect Int
 foreign import redeemers_get :: Redeemers -> Int -> Effect Redeemer
@@ -8967,13 +9003,13 @@ type RedeemersClass =
   , toBytes :: Redeemers -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Redeemers
+  , fromBytes :: Bytes -> Maybe Redeemers
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Redeemers -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Redeemers
+  , fromHex :: String -> Maybe Redeemers
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Redeemers -> String
@@ -8982,7 +9018,7 @@ type RedeemersClass =
   , toJsValue :: Redeemers -> RedeemersJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Redeemers
+  , fromJson :: String -> Maybe Redeemers
     -- ^ From json
     -- > fromJson json
   , new :: Effect Redeemers
@@ -9007,12 +9043,12 @@ redeemers :: RedeemersClass
 redeemers =
   { free: redeemers_free
   , toBytes: redeemers_toBytes
-  , fromBytes: redeemers_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ redeemers_fromBytes a1
   , toHex: redeemers_toHex
-  , fromHex: redeemers_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ redeemers_fromHex a1
   , toJson: redeemers_toJson
   , toJsValue: redeemers_toJsValue
-  , fromJson: redeemers_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ redeemers_fromJson a1
   , new: redeemers_new
   , len: redeemers_len
   , get: redeemers_get
@@ -9055,12 +9091,12 @@ instance IsJson Redeemers where
 
 foreign import relay_free :: Relay -> Effect Unit
 foreign import relay_toBytes :: Relay -> Bytes
-foreign import relay_fromBytes :: Bytes -> Relay
+foreign import relay_fromBytes :: Bytes -> ForeignErrorable Relay
 foreign import relay_toHex :: Relay -> String
-foreign import relay_fromHex :: String -> Relay
+foreign import relay_fromHex :: String -> ForeignErrorable Relay
 foreign import relay_toJson :: Relay -> String
 foreign import relay_toJsValue :: Relay -> RelayJson
-foreign import relay_fromJson :: String -> Relay
+foreign import relay_fromJson :: String -> ForeignErrorable Relay
 foreign import relay_newSingleHostAddr :: SingleHostAddr -> Relay
 foreign import relay_newSingleHostName :: SingleHostName -> Relay
 foreign import relay_newMultiHostName :: MultiHostName -> Relay
@@ -9077,13 +9113,13 @@ type RelayClass =
   , toBytes :: Relay -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Relay
+  , fromBytes :: Bytes -> Maybe Relay
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Relay -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Relay
+  , fromHex :: String -> Maybe Relay
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Relay -> String
@@ -9092,7 +9128,7 @@ type RelayClass =
   , toJsValue :: Relay -> RelayJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Relay
+  , fromJson :: String -> Maybe Relay
     -- ^ From json
     -- > fromJson json
   , newSingleHostAddr :: SingleHostAddr -> Relay
@@ -9123,12 +9159,12 @@ relay :: RelayClass
 relay =
   { free: relay_free
   , toBytes: relay_toBytes
-  , fromBytes: relay_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ relay_fromBytes a1
   , toHex: relay_toHex
-  , fromHex: relay_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ relay_fromHex a1
   , toJson: relay_toJson
   , toJsValue: relay_toJsValue
-  , fromJson: relay_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ relay_fromJson a1
   , newSingleHostAddr: relay_newSingleHostAddr
   , newSingleHostName: relay_newSingleHostName
   , newMultiHostName: relay_newMultiHostName
@@ -9164,12 +9200,12 @@ instance IsJson Relay where
 
 foreign import relays_free :: Relays -> Effect Unit
 foreign import relays_toBytes :: Relays -> Bytes
-foreign import relays_fromBytes :: Bytes -> Relays
+foreign import relays_fromBytes :: Bytes -> ForeignErrorable Relays
 foreign import relays_toHex :: Relays -> String
-foreign import relays_fromHex :: String -> Relays
+foreign import relays_fromHex :: String -> ForeignErrorable Relays
 foreign import relays_toJson :: Relays -> String
 foreign import relays_toJsValue :: Relays -> RelaysJson
-foreign import relays_fromJson :: String -> Relays
+foreign import relays_fromJson :: String -> ForeignErrorable Relays
 foreign import relays_new :: Effect Relays
 foreign import relays_len :: Relays -> Effect Int
 foreign import relays_get :: Relays -> Int -> Effect Relay
@@ -9183,13 +9219,13 @@ type RelaysClass =
   , toBytes :: Relays -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Relays
+  , fromBytes :: Bytes -> Maybe Relays
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Relays -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Relays
+  , fromHex :: String -> Maybe Relays
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Relays -> String
@@ -9198,7 +9234,7 @@ type RelaysClass =
   , toJsValue :: Relays -> RelaysJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Relays
+  , fromJson :: String -> Maybe Relays
     -- ^ From json
     -- > fromJson json
   , new :: Effect Relays
@@ -9220,12 +9256,12 @@ relays :: RelaysClass
 relays =
   { free: relays_free
   , toBytes: relays_toBytes
-  , fromBytes: relays_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ relays_fromBytes a1
   , toHex: relays_toHex
-  , fromHex: relays_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ relays_fromHex a1
   , toJson: relays_toJson
   , toJsValue: relays_toJsValue
-  , fromJson: relays_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ relays_fromJson a1
   , new: relays_new
   , len: relays_len
   , get: relays_get
@@ -9308,12 +9344,12 @@ instance HasFree RewardAddress where
 
 foreign import rewardAddresses_free :: RewardAddresses -> Effect Unit
 foreign import rewardAddresses_toBytes :: RewardAddresses -> Bytes
-foreign import rewardAddresses_fromBytes :: Bytes -> RewardAddresses
+foreign import rewardAddresses_fromBytes :: Bytes -> ForeignErrorable RewardAddresses
 foreign import rewardAddresses_toHex :: RewardAddresses -> String
-foreign import rewardAddresses_fromHex :: String -> RewardAddresses
+foreign import rewardAddresses_fromHex :: String -> ForeignErrorable RewardAddresses
 foreign import rewardAddresses_toJson :: RewardAddresses -> String
 foreign import rewardAddresses_toJsValue :: RewardAddresses -> RewardAddressesJson
-foreign import rewardAddresses_fromJson :: String -> RewardAddresses
+foreign import rewardAddresses_fromJson :: String -> ForeignErrorable RewardAddresses
 foreign import rewardAddresses_new :: Effect RewardAddresses
 foreign import rewardAddresses_len :: RewardAddresses -> Effect Int
 foreign import rewardAddresses_get :: RewardAddresses -> Int -> Effect RewardAddress
@@ -9327,13 +9363,13 @@ type RewardAddressesClass =
   , toBytes :: RewardAddresses -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> RewardAddresses
+  , fromBytes :: Bytes -> Maybe RewardAddresses
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: RewardAddresses -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> RewardAddresses
+  , fromHex :: String -> Maybe RewardAddresses
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: RewardAddresses -> String
@@ -9342,7 +9378,7 @@ type RewardAddressesClass =
   , toJsValue :: RewardAddresses -> RewardAddressesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> RewardAddresses
+  , fromJson :: String -> Maybe RewardAddresses
     -- ^ From json
     -- > fromJson json
   , new :: Effect RewardAddresses
@@ -9364,12 +9400,12 @@ rewardAddresses :: RewardAddressesClass
 rewardAddresses =
   { free: rewardAddresses_free
   , toBytes: rewardAddresses_toBytes
-  , fromBytes: rewardAddresses_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ rewardAddresses_fromBytes a1
   , toHex: rewardAddresses_toHex
-  , fromHex: rewardAddresses_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ rewardAddresses_fromHex a1
   , toJson: rewardAddresses_toJson
   , toJsValue: rewardAddresses_toJsValue
-  , fromJson: rewardAddresses_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ rewardAddresses_fromJson a1
   , new: rewardAddresses_new
   , len: rewardAddresses_len
   , get: rewardAddresses_get
@@ -9411,12 +9447,12 @@ instance IsJson RewardAddresses where
 
 foreign import scriptAll_free :: ScriptAll -> Effect Unit
 foreign import scriptAll_toBytes :: ScriptAll -> Bytes
-foreign import scriptAll_fromBytes :: Bytes -> ScriptAll
+foreign import scriptAll_fromBytes :: Bytes -> ForeignErrorable ScriptAll
 foreign import scriptAll_toHex :: ScriptAll -> String
-foreign import scriptAll_fromHex :: String -> ScriptAll
+foreign import scriptAll_fromHex :: String -> ForeignErrorable ScriptAll
 foreign import scriptAll_toJson :: ScriptAll -> String
 foreign import scriptAll_toJsValue :: ScriptAll -> ScriptAllJson
-foreign import scriptAll_fromJson :: String -> ScriptAll
+foreign import scriptAll_fromJson :: String -> ForeignErrorable ScriptAll
 foreign import scriptAll_nativeScripts :: ScriptAll -> NativeScripts
 foreign import scriptAll_new :: NativeScripts -> ScriptAll
 
@@ -9428,13 +9464,13 @@ type ScriptAllClass =
   , toBytes :: ScriptAll -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ScriptAll
+  , fromBytes :: Bytes -> Maybe ScriptAll
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ScriptAll -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ScriptAll
+  , fromHex :: String -> Maybe ScriptAll
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ScriptAll -> String
@@ -9443,7 +9479,7 @@ type ScriptAllClass =
   , toJsValue :: ScriptAll -> ScriptAllJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ScriptAll
+  , fromJson :: String -> Maybe ScriptAll
     -- ^ From json
     -- > fromJson json
   , nativeScripts :: ScriptAll -> NativeScripts
@@ -9459,12 +9495,12 @@ scriptAll :: ScriptAllClass
 scriptAll =
   { free: scriptAll_free
   , toBytes: scriptAll_toBytes
-  , fromBytes: scriptAll_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ scriptAll_fromBytes a1
   , toHex: scriptAll_toHex
-  , fromHex: scriptAll_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ scriptAll_fromHex a1
   , toJson: scriptAll_toJson
   , toJsValue: scriptAll_toJsValue
-  , fromJson: scriptAll_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ scriptAll_fromJson a1
   , nativeScripts: scriptAll_nativeScripts
   , new: scriptAll_new
   }
@@ -9495,12 +9531,12 @@ instance IsJson ScriptAll where
 
 foreign import scriptAny_free :: ScriptAny -> Effect Unit
 foreign import scriptAny_toBytes :: ScriptAny -> Bytes
-foreign import scriptAny_fromBytes :: Bytes -> ScriptAny
+foreign import scriptAny_fromBytes :: Bytes -> ForeignErrorable ScriptAny
 foreign import scriptAny_toHex :: ScriptAny -> String
-foreign import scriptAny_fromHex :: String -> ScriptAny
+foreign import scriptAny_fromHex :: String -> ForeignErrorable ScriptAny
 foreign import scriptAny_toJson :: ScriptAny -> String
 foreign import scriptAny_toJsValue :: ScriptAny -> ScriptAnyJson
-foreign import scriptAny_fromJson :: String -> ScriptAny
+foreign import scriptAny_fromJson :: String -> ForeignErrorable ScriptAny
 foreign import scriptAny_nativeScripts :: ScriptAny -> NativeScripts
 foreign import scriptAny_new :: NativeScripts -> ScriptAny
 
@@ -9512,13 +9548,13 @@ type ScriptAnyClass =
   , toBytes :: ScriptAny -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ScriptAny
+  , fromBytes :: Bytes -> Maybe ScriptAny
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ScriptAny -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ScriptAny
+  , fromHex :: String -> Maybe ScriptAny
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ScriptAny -> String
@@ -9527,7 +9563,7 @@ type ScriptAnyClass =
   , toJsValue :: ScriptAny -> ScriptAnyJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ScriptAny
+  , fromJson :: String -> Maybe ScriptAny
     -- ^ From json
     -- > fromJson json
   , nativeScripts :: ScriptAny -> NativeScripts
@@ -9543,12 +9579,12 @@ scriptAny :: ScriptAnyClass
 scriptAny =
   { free: scriptAny_free
   , toBytes: scriptAny_toBytes
-  , fromBytes: scriptAny_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ scriptAny_fromBytes a1
   , toHex: scriptAny_toHex
-  , fromHex: scriptAny_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ scriptAny_fromHex a1
   , toJson: scriptAny_toJson
   , toJsValue: scriptAny_toJsValue
-  , fromJson: scriptAny_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ scriptAny_fromJson a1
   , nativeScripts: scriptAny_nativeScripts
   , new: scriptAny_new
   }
@@ -9578,19 +9614,19 @@ instance IsJson ScriptAny where
 -- Script data hash
 
 foreign import scriptDataHash_free :: ScriptDataHash -> Effect Unit
-foreign import scriptDataHash_fromBytes :: Bytes -> ScriptDataHash
+foreign import scriptDataHash_fromBytes :: Bytes -> ForeignErrorable ScriptDataHash
 foreign import scriptDataHash_toBytes :: ScriptDataHash -> Bytes
 foreign import scriptDataHash_toBech32 :: ScriptDataHash -> String -> String
-foreign import scriptDataHash_fromBech32 :: String -> ScriptDataHash
+foreign import scriptDataHash_fromBech32 :: String -> ForeignErrorable ScriptDataHash
 foreign import scriptDataHash_toHex :: ScriptDataHash -> String
-foreign import scriptDataHash_fromHex :: String -> ScriptDataHash
+foreign import scriptDataHash_fromHex :: String -> ForeignErrorable ScriptDataHash
 
 -- | Script data hash class
 type ScriptDataHashClass =
   { free :: ScriptDataHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> ScriptDataHash
+  , fromBytes :: Bytes -> Maybe ScriptDataHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: ScriptDataHash -> Bytes
@@ -9599,13 +9635,13 @@ type ScriptDataHashClass =
   , toBech32 :: ScriptDataHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> ScriptDataHash
+  , fromBech32 :: String -> Maybe ScriptDataHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: ScriptDataHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ScriptDataHash
+  , fromHex :: String -> Maybe ScriptDataHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -9614,12 +9650,12 @@ type ScriptDataHashClass =
 scriptDataHash :: ScriptDataHashClass
 scriptDataHash =
   { free: scriptDataHash_free
-  , fromBytes: scriptDataHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ scriptDataHash_fromBytes a1
   , toBytes: scriptDataHash_toBytes
   , toBech32: scriptDataHash_toBech32
-  , fromBech32: scriptDataHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ scriptDataHash_fromBech32 a1
   , toHex: scriptDataHash_toHex
-  , fromHex: scriptDataHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ scriptDataHash_fromHex a1
   }
 
 instance HasFree ScriptDataHash where
@@ -9640,19 +9676,19 @@ instance IsBytes ScriptDataHash where
 -- Script hash
 
 foreign import scriptHash_free :: ScriptHash -> Effect Unit
-foreign import scriptHash_fromBytes :: Bytes -> ScriptHash
+foreign import scriptHash_fromBytes :: Bytes -> ForeignErrorable ScriptHash
 foreign import scriptHash_toBytes :: ScriptHash -> Bytes
 foreign import scriptHash_toBech32 :: ScriptHash -> String -> String
-foreign import scriptHash_fromBech32 :: String -> ScriptHash
+foreign import scriptHash_fromBech32 :: String -> ForeignErrorable ScriptHash
 foreign import scriptHash_toHex :: ScriptHash -> String
-foreign import scriptHash_fromHex :: String -> ScriptHash
+foreign import scriptHash_fromHex :: String -> ForeignErrorable ScriptHash
 
 -- | Script hash class
 type ScriptHashClass =
   { free :: ScriptHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> ScriptHash
+  , fromBytes :: Bytes -> Maybe ScriptHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: ScriptHash -> Bytes
@@ -9661,13 +9697,13 @@ type ScriptHashClass =
   , toBech32 :: ScriptHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> ScriptHash
+  , fromBech32 :: String -> Maybe ScriptHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: ScriptHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ScriptHash
+  , fromHex :: String -> Maybe ScriptHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -9676,12 +9712,12 @@ type ScriptHashClass =
 scriptHash :: ScriptHashClass
 scriptHash =
   { free: scriptHash_free
-  , fromBytes: scriptHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ scriptHash_fromBytes a1
   , toBytes: scriptHash_toBytes
   , toBech32: scriptHash_toBech32
-  , fromBech32: scriptHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ scriptHash_fromBech32 a1
   , toHex: scriptHash_toHex
-  , fromHex: scriptHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ scriptHash_fromHex a1
   }
 
 instance HasFree ScriptHash where
@@ -9703,12 +9739,12 @@ instance IsBytes ScriptHash where
 
 foreign import scriptHashes_free :: ScriptHashes -> Effect Unit
 foreign import scriptHashes_toBytes :: ScriptHashes -> Bytes
-foreign import scriptHashes_fromBytes :: Bytes -> ScriptHashes
+foreign import scriptHashes_fromBytes :: Bytes -> ForeignErrorable ScriptHashes
 foreign import scriptHashes_toHex :: ScriptHashes -> String
-foreign import scriptHashes_fromHex :: String -> ScriptHashes
+foreign import scriptHashes_fromHex :: String -> ForeignErrorable ScriptHashes
 foreign import scriptHashes_toJson :: ScriptHashes -> String
 foreign import scriptHashes_toJsValue :: ScriptHashes -> ScriptHashesJson
-foreign import scriptHashes_fromJson :: String -> ScriptHashes
+foreign import scriptHashes_fromJson :: String -> ForeignErrorable ScriptHashes
 foreign import scriptHashes_new :: Effect ScriptHashes
 foreign import scriptHashes_len :: ScriptHashes -> Effect Int
 foreign import scriptHashes_get :: ScriptHashes -> Int -> Effect ScriptHash
@@ -9722,13 +9758,13 @@ type ScriptHashesClass =
   , toBytes :: ScriptHashes -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ScriptHashes
+  , fromBytes :: Bytes -> Maybe ScriptHashes
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ScriptHashes -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ScriptHashes
+  , fromHex :: String -> Maybe ScriptHashes
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ScriptHashes -> String
@@ -9737,7 +9773,7 @@ type ScriptHashesClass =
   , toJsValue :: ScriptHashes -> ScriptHashesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ScriptHashes
+  , fromJson :: String -> Maybe ScriptHashes
     -- ^ From json
     -- > fromJson json
   , new :: Effect ScriptHashes
@@ -9759,12 +9795,12 @@ scriptHashes :: ScriptHashesClass
 scriptHashes =
   { free: scriptHashes_free
   , toBytes: scriptHashes_toBytes
-  , fromBytes: scriptHashes_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ scriptHashes_fromBytes a1
   , toHex: scriptHashes_toHex
-  , fromHex: scriptHashes_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ scriptHashes_fromHex a1
   , toJson: scriptHashes_toJson
   , toJsValue: scriptHashes_toJsValue
-  , fromJson: scriptHashes_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ scriptHashes_fromJson a1
   , new: scriptHashes_new
   , len: scriptHashes_len
   , get: scriptHashes_get
@@ -9806,12 +9842,12 @@ instance IsJson ScriptHashes where
 
 foreign import scriptNOfK_free :: ScriptNOfK -> Effect Unit
 foreign import scriptNOfK_toBytes :: ScriptNOfK -> Bytes
-foreign import scriptNOfK_fromBytes :: Bytes -> ScriptNOfK
+foreign import scriptNOfK_fromBytes :: Bytes -> ForeignErrorable ScriptNOfK
 foreign import scriptNOfK_toHex :: ScriptNOfK -> String
-foreign import scriptNOfK_fromHex :: String -> ScriptNOfK
+foreign import scriptNOfK_fromHex :: String -> ForeignErrorable ScriptNOfK
 foreign import scriptNOfK_toJson :: ScriptNOfK -> String
 foreign import scriptNOfK_toJsValue :: ScriptNOfK -> ScriptNOfKJson
-foreign import scriptNOfK_fromJson :: String -> ScriptNOfK
+foreign import scriptNOfK_fromJson :: String -> ForeignErrorable ScriptNOfK
 foreign import scriptNOfK_n :: ScriptNOfK -> Number
 foreign import scriptNOfK_nativeScripts :: ScriptNOfK -> NativeScripts
 foreign import scriptNOfK_new :: Number -> NativeScripts -> ScriptNOfK
@@ -9824,13 +9860,13 @@ type ScriptNOfKClass =
   , toBytes :: ScriptNOfK -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ScriptNOfK
+  , fromBytes :: Bytes -> Maybe ScriptNOfK
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ScriptNOfK -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ScriptNOfK
+  , fromHex :: String -> Maybe ScriptNOfK
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ScriptNOfK -> String
@@ -9839,7 +9875,7 @@ type ScriptNOfKClass =
   , toJsValue :: ScriptNOfK -> ScriptNOfKJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ScriptNOfK
+  , fromJson :: String -> Maybe ScriptNOfK
     -- ^ From json
     -- > fromJson json
   , n :: ScriptNOfK -> Number
@@ -9858,12 +9894,12 @@ scriptNOfK :: ScriptNOfKClass
 scriptNOfK =
   { free: scriptNOfK_free
   , toBytes: scriptNOfK_toBytes
-  , fromBytes: scriptNOfK_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ scriptNOfK_fromBytes a1
   , toHex: scriptNOfK_toHex
-  , fromHex: scriptNOfK_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ scriptNOfK_fromHex a1
   , toJson: scriptNOfK_toJson
   , toJsValue: scriptNOfK_toJsValue
-  , fromJson: scriptNOfK_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ scriptNOfK_fromJson a1
   , n: scriptNOfK_n
   , nativeScripts: scriptNOfK_nativeScripts
   , new: scriptNOfK_new
@@ -9895,12 +9931,12 @@ instance IsJson ScriptNOfK where
 
 foreign import scriptPubkey_free :: ScriptPubkey -> Effect Unit
 foreign import scriptPubkey_toBytes :: ScriptPubkey -> Bytes
-foreign import scriptPubkey_fromBytes :: Bytes -> ScriptPubkey
+foreign import scriptPubkey_fromBytes :: Bytes -> ForeignErrorable ScriptPubkey
 foreign import scriptPubkey_toHex :: ScriptPubkey -> String
-foreign import scriptPubkey_fromHex :: String -> ScriptPubkey
+foreign import scriptPubkey_fromHex :: String -> ForeignErrorable ScriptPubkey
 foreign import scriptPubkey_toJson :: ScriptPubkey -> String
 foreign import scriptPubkey_toJsValue :: ScriptPubkey -> ScriptPubkeyJson
-foreign import scriptPubkey_fromJson :: String -> ScriptPubkey
+foreign import scriptPubkey_fromJson :: String -> ForeignErrorable ScriptPubkey
 foreign import scriptPubkey_addrKeyhash :: ScriptPubkey -> Ed25519KeyHash
 foreign import scriptPubkey_new :: Ed25519KeyHash -> ScriptPubkey
 
@@ -9912,13 +9948,13 @@ type ScriptPubkeyClass =
   , toBytes :: ScriptPubkey -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ScriptPubkey
+  , fromBytes :: Bytes -> Maybe ScriptPubkey
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ScriptPubkey -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ScriptPubkey
+  , fromHex :: String -> Maybe ScriptPubkey
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ScriptPubkey -> String
@@ -9927,7 +9963,7 @@ type ScriptPubkeyClass =
   , toJsValue :: ScriptPubkey -> ScriptPubkeyJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ScriptPubkey
+  , fromJson :: String -> Maybe ScriptPubkey
     -- ^ From json
     -- > fromJson json
   , addrKeyhash :: ScriptPubkey -> Ed25519KeyHash
@@ -9943,12 +9979,12 @@ scriptPubkey :: ScriptPubkeyClass
 scriptPubkey =
   { free: scriptPubkey_free
   , toBytes: scriptPubkey_toBytes
-  , fromBytes: scriptPubkey_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ scriptPubkey_fromBytes a1
   , toHex: scriptPubkey_toHex
-  , fromHex: scriptPubkey_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ scriptPubkey_fromHex a1
   , toJson: scriptPubkey_toJson
   , toJsValue: scriptPubkey_toJsValue
-  , fromJson: scriptPubkey_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ scriptPubkey_fromJson a1
   , addrKeyhash: scriptPubkey_addrKeyhash
   , new: scriptPubkey_new
   }
@@ -9979,12 +10015,12 @@ instance IsJson ScriptPubkey where
 
 foreign import scriptRef_free :: ScriptRef -> Effect Unit
 foreign import scriptRef_toBytes :: ScriptRef -> Bytes
-foreign import scriptRef_fromBytes :: Bytes -> ScriptRef
+foreign import scriptRef_fromBytes :: Bytes -> ForeignErrorable ScriptRef
 foreign import scriptRef_toHex :: ScriptRef -> String
-foreign import scriptRef_fromHex :: String -> ScriptRef
+foreign import scriptRef_fromHex :: String -> ForeignErrorable ScriptRef
 foreign import scriptRef_toJson :: ScriptRef -> String
 foreign import scriptRef_toJsValue :: ScriptRef -> ScriptRefJson
-foreign import scriptRef_fromJson :: String -> ScriptRef
+foreign import scriptRef_fromJson :: String -> ForeignErrorable ScriptRef
 foreign import scriptRef_newNativeScript :: NativeScript -> ScriptRef
 foreign import scriptRef_newPlutusScript :: PlutusScript -> ScriptRef
 foreign import scriptRef_isNativeScript :: ScriptRef -> Boolean
@@ -10000,13 +10036,13 @@ type ScriptRefClass =
   , toBytes :: ScriptRef -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> ScriptRef
+  , fromBytes :: Bytes -> Maybe ScriptRef
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: ScriptRef -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> ScriptRef
+  , fromHex :: String -> Maybe ScriptRef
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: ScriptRef -> String
@@ -10015,7 +10051,7 @@ type ScriptRefClass =
   , toJsValue :: ScriptRef -> ScriptRefJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> ScriptRef
+  , fromJson :: String -> Maybe ScriptRef
     -- ^ From json
     -- > fromJson json
   , newNativeScript :: NativeScript -> ScriptRef
@@ -10043,12 +10079,12 @@ scriptRef :: ScriptRefClass
 scriptRef =
   { free: scriptRef_free
   , toBytes: scriptRef_toBytes
-  , fromBytes: scriptRef_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ scriptRef_fromBytes a1
   , toHex: scriptRef_toHex
-  , fromHex: scriptRef_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ scriptRef_fromHex a1
   , toJson: scriptRef_toJson
   , toJsValue: scriptRef_toJsValue
-  , fromJson: scriptRef_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ scriptRef_fromJson a1
   , newNativeScript: scriptRef_newNativeScript
   , newPlutusScript: scriptRef_newPlutusScript
   , isNativeScript: scriptRef_isNativeScript
@@ -10083,12 +10119,12 @@ instance IsJson ScriptRef where
 
 foreign import singleHostAddr_free :: SingleHostAddr -> Effect Unit
 foreign import singleHostAddr_toBytes :: SingleHostAddr -> Bytes
-foreign import singleHostAddr_fromBytes :: Bytes -> SingleHostAddr
+foreign import singleHostAddr_fromBytes :: Bytes -> ForeignErrorable SingleHostAddr
 foreign import singleHostAddr_toHex :: SingleHostAddr -> String
-foreign import singleHostAddr_fromHex :: String -> SingleHostAddr
+foreign import singleHostAddr_fromHex :: String -> ForeignErrorable SingleHostAddr
 foreign import singleHostAddr_toJson :: SingleHostAddr -> String
 foreign import singleHostAddr_toJsValue :: SingleHostAddr -> SingleHostAddrJson
-foreign import singleHostAddr_fromJson :: String -> SingleHostAddr
+foreign import singleHostAddr_fromJson :: String -> ForeignErrorable SingleHostAddr
 foreign import singleHostAddr_port :: SingleHostAddr -> Nullable Number
 foreign import singleHostAddr_ipv4 :: SingleHostAddr -> Nullable Ipv4
 foreign import singleHostAddr_ipv6 :: SingleHostAddr -> Nullable Ipv6
@@ -10102,13 +10138,13 @@ type SingleHostAddrClass =
   , toBytes :: SingleHostAddr -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> SingleHostAddr
+  , fromBytes :: Bytes -> Maybe SingleHostAddr
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: SingleHostAddr -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> SingleHostAddr
+  , fromHex :: String -> Maybe SingleHostAddr
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: SingleHostAddr -> String
@@ -10117,7 +10153,7 @@ type SingleHostAddrClass =
   , toJsValue :: SingleHostAddr -> SingleHostAddrJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> SingleHostAddr
+  , fromJson :: String -> Maybe SingleHostAddr
     -- ^ From json
     -- > fromJson json
   , port :: SingleHostAddr -> Maybe Number
@@ -10139,12 +10175,12 @@ singleHostAddr :: SingleHostAddrClass
 singleHostAddr =
   { free: singleHostAddr_free
   , toBytes: singleHostAddr_toBytes
-  , fromBytes: singleHostAddr_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ singleHostAddr_fromBytes a1
   , toHex: singleHostAddr_toHex
-  , fromHex: singleHostAddr_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ singleHostAddr_fromHex a1
   , toJson: singleHostAddr_toJson
   , toJsValue: singleHostAddr_toJsValue
-  , fromJson: singleHostAddr_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ singleHostAddr_fromJson a1
   , port: \a1 -> Nullable.toMaybe $ singleHostAddr_port a1
   , ipv4: \a1 -> Nullable.toMaybe $ singleHostAddr_ipv4 a1
   , ipv6: \a1 -> Nullable.toMaybe $ singleHostAddr_ipv6 a1
@@ -10177,12 +10213,12 @@ instance IsJson SingleHostAddr where
 
 foreign import singleHostName_free :: SingleHostName -> Effect Unit
 foreign import singleHostName_toBytes :: SingleHostName -> Bytes
-foreign import singleHostName_fromBytes :: Bytes -> SingleHostName
+foreign import singleHostName_fromBytes :: Bytes -> ForeignErrorable SingleHostName
 foreign import singleHostName_toHex :: SingleHostName -> String
-foreign import singleHostName_fromHex :: String -> SingleHostName
+foreign import singleHostName_fromHex :: String -> ForeignErrorable SingleHostName
 foreign import singleHostName_toJson :: SingleHostName -> String
 foreign import singleHostName_toJsValue :: SingleHostName -> SingleHostNameJson
-foreign import singleHostName_fromJson :: String -> SingleHostName
+foreign import singleHostName_fromJson :: String -> ForeignErrorable SingleHostName
 foreign import singleHostName_port :: SingleHostName -> Nullable Number
 foreign import singleHostName_dnsName :: SingleHostName -> DNSRecordAorAAAA
 foreign import singleHostName_new :: Nullable Number -> DNSRecordAorAAAA -> SingleHostName
@@ -10195,13 +10231,13 @@ type SingleHostNameClass =
   , toBytes :: SingleHostName -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> SingleHostName
+  , fromBytes :: Bytes -> Maybe SingleHostName
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: SingleHostName -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> SingleHostName
+  , fromHex :: String -> Maybe SingleHostName
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: SingleHostName -> String
@@ -10210,7 +10246,7 @@ type SingleHostNameClass =
   , toJsValue :: SingleHostName -> SingleHostNameJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> SingleHostName
+  , fromJson :: String -> Maybe SingleHostName
     -- ^ From json
     -- > fromJson json
   , port :: SingleHostName -> Maybe Number
@@ -10229,12 +10265,12 @@ singleHostName :: SingleHostNameClass
 singleHostName =
   { free: singleHostName_free
   , toBytes: singleHostName_toBytes
-  , fromBytes: singleHostName_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ singleHostName_fromBytes a1
   , toHex: singleHostName_toHex
-  , fromHex: singleHostName_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ singleHostName_fromHex a1
   , toJson: singleHostName_toJson
   , toJsValue: singleHostName_toJsValue
-  , fromJson: singleHostName_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ singleHostName_fromJson a1
   , port: \a1 -> Nullable.toMaybe $ singleHostName_port a1
   , dnsName: singleHostName_dnsName
   , new: \a1 a2 -> singleHostName_new (Nullable.toNullable a1) a2
@@ -10271,12 +10307,12 @@ foreign import stakeCredential_toKeyhash :: StakeCredential -> Nullable Ed25519K
 foreign import stakeCredential_toScripthash :: StakeCredential -> Nullable ScriptHash
 foreign import stakeCredential_kind :: StakeCredential -> Number
 foreign import stakeCredential_toBytes :: StakeCredential -> Bytes
-foreign import stakeCredential_fromBytes :: Bytes -> StakeCredential
+foreign import stakeCredential_fromBytes :: Bytes -> ForeignErrorable StakeCredential
 foreign import stakeCredential_toHex :: StakeCredential -> String
-foreign import stakeCredential_fromHex :: String -> StakeCredential
+foreign import stakeCredential_fromHex :: String -> ForeignErrorable StakeCredential
 foreign import stakeCredential_toJson :: StakeCredential -> String
 foreign import stakeCredential_toJsValue :: StakeCredential -> StakeCredentialJson
-foreign import stakeCredential_fromJson :: String -> StakeCredential
+foreign import stakeCredential_fromJson :: String -> ForeignErrorable StakeCredential
 
 -- | Stake credential class
 type StakeCredentialClass =
@@ -10301,13 +10337,13 @@ type StakeCredentialClass =
   , toBytes :: StakeCredential -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> StakeCredential
+  , fromBytes :: Bytes -> Maybe StakeCredential
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: StakeCredential -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> StakeCredential
+  , fromHex :: String -> Maybe StakeCredential
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: StakeCredential -> String
@@ -10316,7 +10352,7 @@ type StakeCredentialClass =
   , toJsValue :: StakeCredential -> StakeCredentialJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> StakeCredential
+  , fromJson :: String -> Maybe StakeCredential
     -- ^ From json
     -- > fromJson json
   }
@@ -10331,12 +10367,12 @@ stakeCredential =
   , toScripthash: \a1 -> Nullable.toMaybe $ stakeCredential_toScripthash a1
   , kind: stakeCredential_kind
   , toBytes: stakeCredential_toBytes
-  , fromBytes: stakeCredential_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ stakeCredential_fromBytes a1
   , toHex: stakeCredential_toHex
-  , fromHex: stakeCredential_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ stakeCredential_fromHex a1
   , toJson: stakeCredential_toJson
   , toJsValue: stakeCredential_toJsValue
-  , fromJson: stakeCredential_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ stakeCredential_fromJson a1
   }
 
 instance HasFree StakeCredential where
@@ -10365,12 +10401,12 @@ instance IsJson StakeCredential where
 
 foreign import stakeCredentials_free :: StakeCredentials -> Effect Unit
 foreign import stakeCredentials_toBytes :: StakeCredentials -> Bytes
-foreign import stakeCredentials_fromBytes :: Bytes -> StakeCredentials
+foreign import stakeCredentials_fromBytes :: Bytes -> ForeignErrorable StakeCredentials
 foreign import stakeCredentials_toHex :: StakeCredentials -> String
-foreign import stakeCredentials_fromHex :: String -> StakeCredentials
+foreign import stakeCredentials_fromHex :: String -> ForeignErrorable StakeCredentials
 foreign import stakeCredentials_toJson :: StakeCredentials -> String
 foreign import stakeCredentials_toJsValue :: StakeCredentials -> StakeCredentialsJson
-foreign import stakeCredentials_fromJson :: String -> StakeCredentials
+foreign import stakeCredentials_fromJson :: String -> ForeignErrorable StakeCredentials
 foreign import stakeCredentials_new :: Effect StakeCredentials
 foreign import stakeCredentials_len :: StakeCredentials -> Effect Int
 foreign import stakeCredentials_get :: StakeCredentials -> Int -> Effect StakeCredential
@@ -10384,13 +10420,13 @@ type StakeCredentialsClass =
   , toBytes :: StakeCredentials -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> StakeCredentials
+  , fromBytes :: Bytes -> Maybe StakeCredentials
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: StakeCredentials -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> StakeCredentials
+  , fromHex :: String -> Maybe StakeCredentials
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: StakeCredentials -> String
@@ -10399,7 +10435,7 @@ type StakeCredentialsClass =
   , toJsValue :: StakeCredentials -> StakeCredentialsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> StakeCredentials
+  , fromJson :: String -> Maybe StakeCredentials
     -- ^ From json
     -- > fromJson json
   , new :: Effect StakeCredentials
@@ -10421,12 +10457,12 @@ stakeCredentials :: StakeCredentialsClass
 stakeCredentials =
   { free: stakeCredentials_free
   , toBytes: stakeCredentials_toBytes
-  , fromBytes: stakeCredentials_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ stakeCredentials_fromBytes a1
   , toHex: stakeCredentials_toHex
-  , fromHex: stakeCredentials_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ stakeCredentials_fromHex a1
   , toJson: stakeCredentials_toJson
   , toJsValue: stakeCredentials_toJsValue
-  , fromJson: stakeCredentials_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ stakeCredentials_fromJson a1
   , new: stakeCredentials_new
   , len: stakeCredentials_len
   , get: stakeCredentials_get
@@ -10468,12 +10504,12 @@ instance IsJson StakeCredentials where
 
 foreign import stakeDelegation_free :: StakeDelegation -> Effect Unit
 foreign import stakeDelegation_toBytes :: StakeDelegation -> Bytes
-foreign import stakeDelegation_fromBytes :: Bytes -> StakeDelegation
+foreign import stakeDelegation_fromBytes :: Bytes -> ForeignErrorable StakeDelegation
 foreign import stakeDelegation_toHex :: StakeDelegation -> String
-foreign import stakeDelegation_fromHex :: String -> StakeDelegation
+foreign import stakeDelegation_fromHex :: String -> ForeignErrorable StakeDelegation
 foreign import stakeDelegation_toJson :: StakeDelegation -> String
 foreign import stakeDelegation_toJsValue :: StakeDelegation -> StakeDelegationJson
-foreign import stakeDelegation_fromJson :: String -> StakeDelegation
+foreign import stakeDelegation_fromJson :: String -> ForeignErrorable StakeDelegation
 foreign import stakeDelegation_stakeCredential :: StakeDelegation -> StakeCredential
 foreign import stakeDelegation_poolKeyhash :: StakeDelegation -> Ed25519KeyHash
 foreign import stakeDelegation_new :: StakeCredential -> Ed25519KeyHash -> StakeDelegation
@@ -10486,13 +10522,13 @@ type StakeDelegationClass =
   , toBytes :: StakeDelegation -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> StakeDelegation
+  , fromBytes :: Bytes -> Maybe StakeDelegation
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: StakeDelegation -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> StakeDelegation
+  , fromHex :: String -> Maybe StakeDelegation
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: StakeDelegation -> String
@@ -10501,7 +10537,7 @@ type StakeDelegationClass =
   , toJsValue :: StakeDelegation -> StakeDelegationJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> StakeDelegation
+  , fromJson :: String -> Maybe StakeDelegation
     -- ^ From json
     -- > fromJson json
   , stakeCredential :: StakeDelegation -> StakeCredential
@@ -10520,12 +10556,12 @@ stakeDelegation :: StakeDelegationClass
 stakeDelegation =
   { free: stakeDelegation_free
   , toBytes: stakeDelegation_toBytes
-  , fromBytes: stakeDelegation_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ stakeDelegation_fromBytes a1
   , toHex: stakeDelegation_toHex
-  , fromHex: stakeDelegation_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ stakeDelegation_fromHex a1
   , toJson: stakeDelegation_toJson
   , toJsValue: stakeDelegation_toJsValue
-  , fromJson: stakeDelegation_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ stakeDelegation_fromJson a1
   , stakeCredential: stakeDelegation_stakeCredential
   , poolKeyhash: stakeDelegation_poolKeyhash
   , new: stakeDelegation_new
@@ -10557,12 +10593,12 @@ instance IsJson StakeDelegation where
 
 foreign import stakeDeregistration_free :: StakeDeregistration -> Effect Unit
 foreign import stakeDeregistration_toBytes :: StakeDeregistration -> Bytes
-foreign import stakeDeregistration_fromBytes :: Bytes -> StakeDeregistration
+foreign import stakeDeregistration_fromBytes :: Bytes -> ForeignErrorable StakeDeregistration
 foreign import stakeDeregistration_toHex :: StakeDeregistration -> String
-foreign import stakeDeregistration_fromHex :: String -> StakeDeregistration
+foreign import stakeDeregistration_fromHex :: String -> ForeignErrorable StakeDeregistration
 foreign import stakeDeregistration_toJson :: StakeDeregistration -> String
 foreign import stakeDeregistration_toJsValue :: StakeDeregistration -> StakeDeregistrationJson
-foreign import stakeDeregistration_fromJson :: String -> StakeDeregistration
+foreign import stakeDeregistration_fromJson :: String -> ForeignErrorable StakeDeregistration
 foreign import stakeDeregistration_stakeCredential :: StakeDeregistration -> StakeCredential
 foreign import stakeDeregistration_new :: StakeCredential -> StakeDeregistration
 
@@ -10574,13 +10610,13 @@ type StakeDeregistrationClass =
   , toBytes :: StakeDeregistration -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> StakeDeregistration
+  , fromBytes :: Bytes -> Maybe StakeDeregistration
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: StakeDeregistration -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> StakeDeregistration
+  , fromHex :: String -> Maybe StakeDeregistration
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: StakeDeregistration -> String
@@ -10589,7 +10625,7 @@ type StakeDeregistrationClass =
   , toJsValue :: StakeDeregistration -> StakeDeregistrationJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> StakeDeregistration
+  , fromJson :: String -> Maybe StakeDeregistration
     -- ^ From json
     -- > fromJson json
   , stakeCredential :: StakeDeregistration -> StakeCredential
@@ -10605,12 +10641,12 @@ stakeDeregistration :: StakeDeregistrationClass
 stakeDeregistration =
   { free: stakeDeregistration_free
   , toBytes: stakeDeregistration_toBytes
-  , fromBytes: stakeDeregistration_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ stakeDeregistration_fromBytes a1
   , toHex: stakeDeregistration_toHex
-  , fromHex: stakeDeregistration_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ stakeDeregistration_fromHex a1
   , toJson: stakeDeregistration_toJson
   , toJsValue: stakeDeregistration_toJsValue
-  , fromJson: stakeDeregistration_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ stakeDeregistration_fromJson a1
   , stakeCredential: stakeDeregistration_stakeCredential
   , new: stakeDeregistration_new
   }
@@ -10641,12 +10677,12 @@ instance IsJson StakeDeregistration where
 
 foreign import stakeRegistration_free :: StakeRegistration -> Effect Unit
 foreign import stakeRegistration_toBytes :: StakeRegistration -> Bytes
-foreign import stakeRegistration_fromBytes :: Bytes -> StakeRegistration
+foreign import stakeRegistration_fromBytes :: Bytes -> ForeignErrorable StakeRegistration
 foreign import stakeRegistration_toHex :: StakeRegistration -> String
-foreign import stakeRegistration_fromHex :: String -> StakeRegistration
+foreign import stakeRegistration_fromHex :: String -> ForeignErrorable StakeRegistration
 foreign import stakeRegistration_toJson :: StakeRegistration -> String
 foreign import stakeRegistration_toJsValue :: StakeRegistration -> StakeRegistrationJson
-foreign import stakeRegistration_fromJson :: String -> StakeRegistration
+foreign import stakeRegistration_fromJson :: String -> ForeignErrorable StakeRegistration
 foreign import stakeRegistration_stakeCredential :: StakeRegistration -> StakeCredential
 foreign import stakeRegistration_new :: StakeCredential -> StakeRegistration
 
@@ -10658,13 +10694,13 @@ type StakeRegistrationClass =
   , toBytes :: StakeRegistration -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> StakeRegistration
+  , fromBytes :: Bytes -> Maybe StakeRegistration
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: StakeRegistration -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> StakeRegistration
+  , fromHex :: String -> Maybe StakeRegistration
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: StakeRegistration -> String
@@ -10673,7 +10709,7 @@ type StakeRegistrationClass =
   , toJsValue :: StakeRegistration -> StakeRegistrationJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> StakeRegistration
+  , fromJson :: String -> Maybe StakeRegistration
     -- ^ From json
     -- > fromJson json
   , stakeCredential :: StakeRegistration -> StakeCredential
@@ -10689,12 +10725,12 @@ stakeRegistration :: StakeRegistrationClass
 stakeRegistration =
   { free: stakeRegistration_free
   , toBytes: stakeRegistration_toBytes
-  , fromBytes: stakeRegistration_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ stakeRegistration_fromBytes a1
   , toHex: stakeRegistration_toHex
-  , fromHex: stakeRegistration_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ stakeRegistration_fromHex a1
   , toJson: stakeRegistration_toJson
   , toJsValue: stakeRegistration_toJsValue
-  , fromJson: stakeRegistration_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ stakeRegistration_fromJson a1
   , stakeCredential: stakeRegistration_stakeCredential
   , new: stakeRegistration_new
   }
@@ -10774,12 +10810,12 @@ instance MutableLen Strings where
 
 foreign import timelockExpiry_free :: TimelockExpiry -> Effect Unit
 foreign import timelockExpiry_toBytes :: TimelockExpiry -> Bytes
-foreign import timelockExpiry_fromBytes :: Bytes -> TimelockExpiry
+foreign import timelockExpiry_fromBytes :: Bytes -> ForeignErrorable TimelockExpiry
 foreign import timelockExpiry_toHex :: TimelockExpiry -> String
-foreign import timelockExpiry_fromHex :: String -> TimelockExpiry
+foreign import timelockExpiry_fromHex :: String -> ForeignErrorable TimelockExpiry
 foreign import timelockExpiry_toJson :: TimelockExpiry -> String
 foreign import timelockExpiry_toJsValue :: TimelockExpiry -> TimelockExpiryJson
-foreign import timelockExpiry_fromJson :: String -> TimelockExpiry
+foreign import timelockExpiry_fromJson :: String -> ForeignErrorable TimelockExpiry
 foreign import timelockExpiry_slot :: TimelockExpiry -> Number
 foreign import timelockExpiry_slotBignum :: TimelockExpiry -> BigNum
 foreign import timelockExpiry_new :: Number -> TimelockExpiry
@@ -10793,13 +10829,13 @@ type TimelockExpiryClass =
   , toBytes :: TimelockExpiry -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TimelockExpiry
+  , fromBytes :: Bytes -> Maybe TimelockExpiry
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TimelockExpiry -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TimelockExpiry
+  , fromHex :: String -> Maybe TimelockExpiry
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TimelockExpiry -> String
@@ -10808,7 +10844,7 @@ type TimelockExpiryClass =
   , toJsValue :: TimelockExpiry -> TimelockExpiryJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TimelockExpiry
+  , fromJson :: String -> Maybe TimelockExpiry
     -- ^ From json
     -- > fromJson json
   , slot :: TimelockExpiry -> Number
@@ -10830,12 +10866,12 @@ timelockExpiry :: TimelockExpiryClass
 timelockExpiry =
   { free: timelockExpiry_free
   , toBytes: timelockExpiry_toBytes
-  , fromBytes: timelockExpiry_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ timelockExpiry_fromBytes a1
   , toHex: timelockExpiry_toHex
-  , fromHex: timelockExpiry_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ timelockExpiry_fromHex a1
   , toJson: timelockExpiry_toJson
   , toJsValue: timelockExpiry_toJsValue
-  , fromJson: timelockExpiry_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ timelockExpiry_fromJson a1
   , slot: timelockExpiry_slot
   , slotBignum: timelockExpiry_slotBignum
   , new: timelockExpiry_new
@@ -10868,12 +10904,12 @@ instance IsJson TimelockExpiry where
 
 foreign import timelockStart_free :: TimelockStart -> Effect Unit
 foreign import timelockStart_toBytes :: TimelockStart -> Bytes
-foreign import timelockStart_fromBytes :: Bytes -> TimelockStart
+foreign import timelockStart_fromBytes :: Bytes -> ForeignErrorable TimelockStart
 foreign import timelockStart_toHex :: TimelockStart -> String
-foreign import timelockStart_fromHex :: String -> TimelockStart
+foreign import timelockStart_fromHex :: String -> ForeignErrorable TimelockStart
 foreign import timelockStart_toJson :: TimelockStart -> String
 foreign import timelockStart_toJsValue :: TimelockStart -> TimelockStartJson
-foreign import timelockStart_fromJson :: String -> TimelockStart
+foreign import timelockStart_fromJson :: String -> ForeignErrorable TimelockStart
 foreign import timelockStart_slot :: TimelockStart -> Number
 foreign import timelockStart_slotBignum :: TimelockStart -> BigNum
 foreign import timelockStart_new :: Number -> TimelockStart
@@ -10887,13 +10923,13 @@ type TimelockStartClass =
   , toBytes :: TimelockStart -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TimelockStart
+  , fromBytes :: Bytes -> Maybe TimelockStart
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TimelockStart -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TimelockStart
+  , fromHex :: String -> Maybe TimelockStart
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TimelockStart -> String
@@ -10902,7 +10938,7 @@ type TimelockStartClass =
   , toJsValue :: TimelockStart -> TimelockStartJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TimelockStart
+  , fromJson :: String -> Maybe TimelockStart
     -- ^ From json
     -- > fromJson json
   , slot :: TimelockStart -> Number
@@ -10924,12 +10960,12 @@ timelockStart :: TimelockStartClass
 timelockStart =
   { free: timelockStart_free
   , toBytes: timelockStart_toBytes
-  , fromBytes: timelockStart_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ timelockStart_fromBytes a1
   , toHex: timelockStart_toHex
-  , fromHex: timelockStart_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ timelockStart_fromHex a1
   , toJson: timelockStart_toJson
   , toJsValue: timelockStart_toJsValue
-  , fromJson: timelockStart_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ timelockStart_fromJson a1
   , slot: timelockStart_slot
   , slotBignum: timelockStart_slotBignum
   , new: timelockStart_new
@@ -10962,12 +10998,12 @@ instance IsJson TimelockStart where
 
 foreign import tx_free :: Tx -> Effect Unit
 foreign import tx_toBytes :: Tx -> Bytes
-foreign import tx_fromBytes :: Bytes -> Tx
+foreign import tx_fromBytes :: Bytes -> ForeignErrorable Tx
 foreign import tx_toHex :: Tx -> String
-foreign import tx_fromHex :: String -> Tx
+foreign import tx_fromHex :: String -> ForeignErrorable Tx
 foreign import tx_toJson :: Tx -> String
 foreign import tx_toJsValue :: Tx -> TxJson
-foreign import tx_fromJson :: String -> Tx
+foreign import tx_fromJson :: String -> ForeignErrorable Tx
 foreign import tx_body :: Tx -> TxBody
 foreign import tx_witnessSet :: Tx -> TxWitnessSet
 foreign import tx_isValid :: Tx -> Boolean
@@ -10983,13 +11019,13 @@ type TxClass =
   , toBytes :: Tx -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Tx
+  , fromBytes :: Bytes -> Maybe Tx
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Tx -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Tx
+  , fromHex :: String -> Maybe Tx
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Tx -> String
@@ -10998,7 +11034,7 @@ type TxClass =
   , toJsValue :: Tx -> TxJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Tx
+  , fromJson :: String -> Maybe Tx
     -- ^ From json
     -- > fromJson json
   , body :: Tx -> TxBody
@@ -11026,12 +11062,12 @@ tx :: TxClass
 tx =
   { free: tx_free
   , toBytes: tx_toBytes
-  , fromBytes: tx_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ tx_fromBytes a1
   , toHex: tx_toHex
-  , fromHex: tx_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ tx_fromHex a1
   , toJson: tx_toJson
   , toJsValue: tx_toJsValue
-  , fromJson: tx_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ tx_fromJson a1
   , body: tx_body
   , witnessSet: tx_witnessSet
   , isValid: tx_isValid
@@ -11066,12 +11102,12 @@ instance IsJson Tx where
 
 foreign import txBodies_free :: TxBodies -> Effect Unit
 foreign import txBodies_toBytes :: TxBodies -> Bytes
-foreign import txBodies_fromBytes :: Bytes -> TxBodies
+foreign import txBodies_fromBytes :: Bytes -> ForeignErrorable TxBodies
 foreign import txBodies_toHex :: TxBodies -> String
-foreign import txBodies_fromHex :: String -> TxBodies
+foreign import txBodies_fromHex :: String -> ForeignErrorable TxBodies
 foreign import txBodies_toJson :: TxBodies -> String
 foreign import txBodies_toJsValue :: TxBodies -> TxBodiesJson
-foreign import txBodies_fromJson :: String -> TxBodies
+foreign import txBodies_fromJson :: String -> ForeignErrorable TxBodies
 foreign import txBodies_new :: Effect TxBodies
 foreign import txBodies_len :: TxBodies -> Effect Int
 foreign import txBodies_get :: TxBodies -> Int -> Effect TxBody
@@ -11085,13 +11121,13 @@ type TxBodiesClass =
   , toBytes :: TxBodies -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxBodies
+  , fromBytes :: Bytes -> Maybe TxBodies
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxBodies -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxBodies
+  , fromHex :: String -> Maybe TxBodies
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxBodies -> String
@@ -11100,7 +11136,7 @@ type TxBodiesClass =
   , toJsValue :: TxBodies -> TxBodiesJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxBodies
+  , fromJson :: String -> Maybe TxBodies
     -- ^ From json
     -- > fromJson json
   , new :: Effect TxBodies
@@ -11122,12 +11158,12 @@ txBodies :: TxBodiesClass
 txBodies =
   { free: txBodies_free
   , toBytes: txBodies_toBytes
-  , fromBytes: txBodies_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txBodies_fromBytes a1
   , toHex: txBodies_toHex
-  , fromHex: txBodies_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txBodies_fromHex a1
   , toJson: txBodies_toJson
   , toJsValue: txBodies_toJsValue
-  , fromJson: txBodies_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txBodies_fromJson a1
   , new: txBodies_new
   , len: txBodies_len
   , get: txBodies_get
@@ -11169,12 +11205,12 @@ instance IsJson TxBodies where
 
 foreign import txBody_free :: TxBody -> Effect Unit
 foreign import txBody_toBytes :: TxBody -> Bytes
-foreign import txBody_fromBytes :: Bytes -> TxBody
+foreign import txBody_fromBytes :: Bytes -> ForeignErrorable TxBody
 foreign import txBody_toHex :: TxBody -> String
-foreign import txBody_fromHex :: String -> TxBody
+foreign import txBody_fromHex :: String -> ForeignErrorable TxBody
 foreign import txBody_toJson :: TxBody -> String
 foreign import txBody_toJsValue :: TxBody -> TxBodyJson
-foreign import txBody_fromJson :: String -> TxBody
+foreign import txBody_fromJson :: String -> ForeignErrorable TxBody
 foreign import txBody_ins :: TxBody -> TxIns
 foreign import txBody_outs :: TxBody -> TxOuts
 foreign import txBody_fee :: TxBody -> BigNum
@@ -11222,13 +11258,13 @@ type TxBodyClass =
   , toBytes :: TxBody -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxBody
+  , fromBytes :: Bytes -> Maybe TxBody
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxBody -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxBody
+  , fromHex :: String -> Maybe TxBody
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxBody -> String
@@ -11237,7 +11273,7 @@ type TxBodyClass =
   , toJsValue :: TxBody -> TxBodyJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxBody
+  , fromJson :: String -> Maybe TxBody
     -- ^ From json
     -- > fromJson json
   , ins :: TxBody -> TxIns
@@ -11361,12 +11397,12 @@ txBody :: TxBodyClass
 txBody =
   { free: txBody_free
   , toBytes: txBody_toBytes
-  , fromBytes: txBody_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txBody_fromBytes a1
   , toHex: txBody_toHex
-  , fromHex: txBody_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txBody_fromHex a1
   , toJson: txBody_toJson
   , toJsValue: txBody_toJsValue
-  , fromJson: txBody_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txBody_fromJson a1
   , ins: txBody_ins
   , outs: txBody_outs
   , fee: txBody_fee
@@ -11449,8 +11485,8 @@ foreign import txBuilder_addIn :: TxBuilder -> Address -> TxIn -> Value -> Effec
 foreign import txBuilder_countMissingInScripts :: TxBuilder -> Effect Number
 foreign import txBuilder_addRequiredNativeInScripts :: TxBuilder -> NativeScripts -> Effect Number
 foreign import txBuilder_addRequiredPlutusInScripts :: TxBuilder -> PlutusWitnesses -> Effect Number
-foreign import txBuilder_getNativeInScripts :: TxBuilder -> Effect (Nullable NativeScripts)
-foreign import txBuilder_getPlutusInScripts :: TxBuilder -> Effect (Nullable PlutusWitnesses)
+foreign import txBuilder_getNativeInScripts :: TxBuilder -> Effect ((Nullable NativeScripts))
+foreign import txBuilder_getPlutusInScripts :: TxBuilder -> Effect ((Nullable PlutusWitnesses))
 foreign import txBuilder_feeForIn :: TxBuilder -> Address -> TxIn -> Value -> Effect BigNum
 foreign import txBuilder_addOut :: TxBuilder -> TxOut -> Effect Unit
 foreign import txBuilder_feeForOut :: TxBuilder -> TxOut -> Effect BigNum
@@ -11461,15 +11497,15 @@ foreign import txBuilder_setValidityStartInterval :: TxBuilder -> Number -> Effe
 foreign import txBuilder_setValidityStartIntervalBignum :: TxBuilder -> BigNum -> Effect Unit
 foreign import txBuilder_setCerts :: TxBuilder -> Certificates -> Effect Unit
 foreign import txBuilder_setWithdrawals :: TxBuilder -> Withdrawals -> Effect Unit
-foreign import txBuilder_getAuxiliaryData :: TxBuilder -> Effect (Nullable AuxiliaryData)
+foreign import txBuilder_getAuxiliaryData :: TxBuilder -> Effect ((Nullable AuxiliaryData))
 foreign import txBuilder_setAuxiliaryData :: TxBuilder -> AuxiliaryData -> Effect Unit
 foreign import txBuilder_setMetadata :: TxBuilder -> GeneralTxMetadata -> Effect Unit
 foreign import txBuilder_addMetadatum :: TxBuilder -> BigNum -> TxMetadatum -> Effect Unit
 foreign import txBuilder_addJsonMetadatum :: TxBuilder -> BigNum -> String -> Effect Unit
 foreign import txBuilder_addJsonMetadatumWithSchema :: TxBuilder -> BigNum -> String -> Number -> Effect Unit
 foreign import txBuilder_setMint :: TxBuilder -> Mint -> NativeScripts -> Effect Unit
-foreign import txBuilder_getMint :: TxBuilder -> Effect (Nullable Mint)
-foreign import txBuilder_getMintScripts :: TxBuilder -> Effect (Nullable NativeScripts)
+foreign import txBuilder_getMint :: TxBuilder -> Effect ((Nullable Mint))
+foreign import txBuilder_getMintScripts :: TxBuilder -> Effect ((Nullable NativeScripts))
 foreign import txBuilder_setMintAsset :: TxBuilder -> NativeScript -> MintAssets -> Effect Unit
 foreign import txBuilder_addMintAsset :: TxBuilder -> NativeScript -> AssetName -> Int -> Effect Unit
 foreign import txBuilder_addMintAssetAndOut :: TxBuilder -> NativeScript -> AssetName -> Int -> TxOutAmountBuilder -> BigNum -> Effect Unit
@@ -11482,7 +11518,7 @@ foreign import txBuilder_getTotalIn :: TxBuilder -> Effect Value
 foreign import txBuilder_getTotalOut :: TxBuilder -> Effect Value
 foreign import txBuilder_getExplicitOut :: TxBuilder -> Effect Value
 foreign import txBuilder_getDeposit :: TxBuilder -> Effect BigNum
-foreign import txBuilder_getFeeIfSet :: TxBuilder -> Effect (Nullable BigNum)
+foreign import txBuilder_getFeeIfSet :: TxBuilder -> Effect ((Nullable BigNum))
 foreign import txBuilder_addChangeIfNeeded :: TxBuilder -> Address -> Effect Boolean
 foreign import txBuilder_calcScriptDataHash :: TxBuilder -> Costmdls -> Effect Unit
 foreign import txBuilder_setScriptDataHash :: TxBuilder -> ScriptDataHash -> Effect Unit
@@ -11551,10 +11587,10 @@ type TxBuilderClass =
   , addRequiredPlutusInScripts :: TxBuilder -> PlutusWitnesses -> Effect Number
     -- ^ Add required plutus input scripts
     -- > addRequiredPlutusInScripts self scripts
-  , getNativeInScripts :: TxBuilder -> Effect (Maybe NativeScripts)
+  , getNativeInScripts :: TxBuilder -> Effect ((Maybe NativeScripts))
     -- ^ Get native input scripts
     -- > getNativeInScripts self
-  , getPlutusInScripts :: TxBuilder -> Effect (Maybe PlutusWitnesses)
+  , getPlutusInScripts :: TxBuilder -> Effect ((Maybe PlutusWitnesses))
     -- ^ Get plutus input scripts
     -- > getPlutusInScripts self
   , feeForIn :: TxBuilder -> Address -> TxIn -> Value -> Effect BigNum
@@ -11587,7 +11623,7 @@ type TxBuilderClass =
   , setWithdrawals :: TxBuilder -> Withdrawals -> Effect Unit
     -- ^ Set withdrawals
     -- > setWithdrawals self withdrawals
-  , getAuxiliaryData :: TxBuilder -> Effect (Maybe AuxiliaryData)
+  , getAuxiliaryData :: TxBuilder -> Effect ((Maybe AuxiliaryData))
     -- ^ Get auxiliary data
     -- > getAuxiliaryData self
   , setAuxiliaryData :: TxBuilder -> AuxiliaryData -> Effect Unit
@@ -11608,10 +11644,10 @@ type TxBuilderClass =
   , setMint :: TxBuilder -> Mint -> NativeScripts -> Effect Unit
     -- ^ Set mint
     -- > setMint self mint mintScripts
-  , getMint :: TxBuilder -> Effect (Maybe Mint)
+  , getMint :: TxBuilder -> Effect ((Maybe Mint))
     -- ^ Get mint
     -- > getMint self
-  , getMintScripts :: TxBuilder -> Effect (Maybe NativeScripts)
+  , getMintScripts :: TxBuilder -> Effect ((Maybe NativeScripts))
     -- ^ Get mint scripts
     -- > getMintScripts self
   , setMintAsset :: TxBuilder -> NativeScript -> MintAssets -> Effect Unit
@@ -11650,7 +11686,7 @@ type TxBuilderClass =
   , getDeposit :: TxBuilder -> Effect BigNum
     -- ^ Get deposit
     -- > getDeposit self
-  , getFeeIfSet :: TxBuilder -> Effect (Maybe BigNum)
+  , getFeeIfSet :: TxBuilder -> Effect ((Maybe BigNum))
     -- ^ Get fee if set
     -- > getFeeIfSet self
   , addChangeIfNeeded :: TxBuilder -> Address -> Effect Boolean
@@ -11860,19 +11896,19 @@ instance HasFree TxBuilderConfigBuilder where
 -- Transaction hash
 
 foreign import txHash_free :: TxHash -> Effect Unit
-foreign import txHash_fromBytes :: Bytes -> TxHash
+foreign import txHash_fromBytes :: Bytes -> ForeignErrorable TxHash
 foreign import txHash_toBytes :: TxHash -> Bytes
 foreign import txHash_toBech32 :: TxHash -> String -> String
-foreign import txHash_fromBech32 :: String -> TxHash
+foreign import txHash_fromBech32 :: String -> ForeignErrorable TxHash
 foreign import txHash_toHex :: TxHash -> String
-foreign import txHash_fromHex :: String -> TxHash
+foreign import txHash_fromHex :: String -> ForeignErrorable TxHash
 
 -- | Transaction hash class
 type TxHashClass =
   { free :: TxHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> TxHash
+  , fromBytes :: Bytes -> Maybe TxHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: TxHash -> Bytes
@@ -11881,13 +11917,13 @@ type TxHashClass =
   , toBech32 :: TxHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> TxHash
+  , fromBech32 :: String -> Maybe TxHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: TxHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxHash
+  , fromHex :: String -> Maybe TxHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -11896,12 +11932,12 @@ type TxHashClass =
 txHash :: TxHashClass
 txHash =
   { free: txHash_free
-  , fromBytes: txHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txHash_fromBytes a1
   , toBytes: txHash_toBytes
   , toBech32: txHash_toBech32
-  , fromBech32: txHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ txHash_fromBech32 a1
   , toHex: txHash_toHex
-  , fromHex: txHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txHash_fromHex a1
   }
 
 instance HasFree TxHash where
@@ -11923,12 +11959,12 @@ instance IsBytes TxHash where
 
 foreign import txIn_free :: TxIn -> Effect Unit
 foreign import txIn_toBytes :: TxIn -> Bytes
-foreign import txIn_fromBytes :: Bytes -> TxIn
+foreign import txIn_fromBytes :: Bytes -> ForeignErrorable TxIn
 foreign import txIn_toHex :: TxIn -> String
-foreign import txIn_fromHex :: String -> TxIn
+foreign import txIn_fromHex :: String -> ForeignErrorable TxIn
 foreign import txIn_toJson :: TxIn -> String
 foreign import txIn_toJsValue :: TxIn -> TxInJson
-foreign import txIn_fromJson :: String -> TxIn
+foreign import txIn_fromJson :: String -> ForeignErrorable TxIn
 foreign import txIn_txId :: TxIn -> TxHash
 foreign import txIn_index :: TxIn -> Number
 foreign import txIn_new :: TxHash -> Number -> TxIn
@@ -11941,13 +11977,13 @@ type TxInClass =
   , toBytes :: TxIn -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxIn
+  , fromBytes :: Bytes -> Maybe TxIn
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxIn -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxIn
+  , fromHex :: String -> Maybe TxIn
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxIn -> String
@@ -11956,7 +11992,7 @@ type TxInClass =
   , toJsValue :: TxIn -> TxInJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxIn
+  , fromJson :: String -> Maybe TxIn
     -- ^ From json
     -- > fromJson json
   , txId :: TxIn -> TxHash
@@ -11975,12 +12011,12 @@ txIn :: TxInClass
 txIn =
   { free: txIn_free
   , toBytes: txIn_toBytes
-  , fromBytes: txIn_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txIn_fromBytes a1
   , toHex: txIn_toHex
-  , fromHex: txIn_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txIn_fromHex a1
   , toJson: txIn_toJson
   , toJsValue: txIn_toJsValue
-  , fromJson: txIn_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txIn_fromJson a1
   , txId: txIn_txId
   , index: txIn_index
   , new: txIn_new
@@ -12012,12 +12048,12 @@ instance IsJson TxIn where
 
 foreign import txIns_free :: TxIns -> Effect Unit
 foreign import txIns_toBytes :: TxIns -> Bytes
-foreign import txIns_fromBytes :: Bytes -> TxIns
+foreign import txIns_fromBytes :: Bytes -> ForeignErrorable TxIns
 foreign import txIns_toHex :: TxIns -> String
-foreign import txIns_fromHex :: String -> TxIns
+foreign import txIns_fromHex :: String -> ForeignErrorable TxIns
 foreign import txIns_toJson :: TxIns -> String
 foreign import txIns_toJsValue :: TxIns -> TxInsJson
-foreign import txIns_fromJson :: String -> TxIns
+foreign import txIns_fromJson :: String -> ForeignErrorable TxIns
 foreign import txIns_new :: Effect TxIns
 foreign import txIns_len :: TxIns -> Effect Int
 foreign import txIns_get :: TxIns -> Int -> Effect TxIn
@@ -12032,13 +12068,13 @@ type TxInsClass =
   , toBytes :: TxIns -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxIns
+  , fromBytes :: Bytes -> Maybe TxIns
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxIns -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxIns
+  , fromHex :: String -> Maybe TxIns
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxIns -> String
@@ -12047,7 +12083,7 @@ type TxInsClass =
   , toJsValue :: TxIns -> TxInsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxIns
+  , fromJson :: String -> Maybe TxIns
     -- ^ From json
     -- > fromJson json
   , new :: Effect TxIns
@@ -12072,12 +12108,12 @@ txIns :: TxInsClass
 txIns =
   { free: txIns_free
   , toBytes: txIns_toBytes
-  , fromBytes: txIns_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txIns_fromBytes a1
   , toHex: txIns_toHex
-  , fromHex: txIns_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txIns_fromHex a1
   , toJson: txIns_toJson
   , toJsValue: txIns_toJsValue
-  , fromJson: txIns_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txIns_fromJson a1
   , new: txIns_new
   , len: txIns_len
   , get: txIns_get
@@ -12120,9 +12156,9 @@ instance IsJson TxIns where
 
 foreign import txMetadatum_free :: TxMetadatum -> Effect Unit
 foreign import txMetadatum_toBytes :: TxMetadatum -> Bytes
-foreign import txMetadatum_fromBytes :: Bytes -> TxMetadatum
+foreign import txMetadatum_fromBytes :: Bytes -> ForeignErrorable TxMetadatum
 foreign import txMetadatum_toHex :: TxMetadatum -> String
-foreign import txMetadatum_fromHex :: String -> TxMetadatum
+foreign import txMetadatum_fromHex :: String -> ForeignErrorable TxMetadatum
 foreign import txMetadatum_newMap :: MetadataMap -> TxMetadatum
 foreign import txMetadatum_newList :: MetadataList -> TxMetadatum
 foreign import txMetadatum_newInt :: Int -> TxMetadatum
@@ -12143,13 +12179,13 @@ type TxMetadatumClass =
   , toBytes :: TxMetadatum -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxMetadatum
+  , fromBytes :: Bytes -> Maybe TxMetadatum
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxMetadatum -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxMetadatum
+  , fromHex :: String -> Maybe TxMetadatum
     -- ^ From hex
     -- > fromHex hexStr
   , newMap :: MetadataMap -> TxMetadatum
@@ -12192,9 +12228,9 @@ txMetadatum :: TxMetadatumClass
 txMetadatum =
   { free: txMetadatum_free
   , toBytes: txMetadatum_toBytes
-  , fromBytes: txMetadatum_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txMetadatum_fromBytes a1
   , toHex: txMetadatum_toHex
-  , fromHex: txMetadatum_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txMetadatum_fromHex a1
   , newMap: txMetadatum_newMap
   , newList: txMetadatum_newList
   , newInt: txMetadatum_newInt
@@ -12227,9 +12263,9 @@ instance IsBytes TxMetadatum where
 
 foreign import txMetadatumLabels_free :: TxMetadatumLabels -> Effect Unit
 foreign import txMetadatumLabels_toBytes :: TxMetadatumLabels -> Bytes
-foreign import txMetadatumLabels_fromBytes :: Bytes -> TxMetadatumLabels
+foreign import txMetadatumLabels_fromBytes :: Bytes -> ForeignErrorable TxMetadatumLabels
 foreign import txMetadatumLabels_toHex :: TxMetadatumLabels -> String
-foreign import txMetadatumLabels_fromHex :: String -> TxMetadatumLabels
+foreign import txMetadatumLabels_fromHex :: String -> ForeignErrorable TxMetadatumLabels
 foreign import txMetadatumLabels_new :: Effect TxMetadatumLabels
 foreign import txMetadatumLabels_len :: TxMetadatumLabels -> Effect Int
 foreign import txMetadatumLabels_get :: TxMetadatumLabels -> Int -> Effect BigNum
@@ -12243,13 +12279,13 @@ type TxMetadatumLabelsClass =
   , toBytes :: TxMetadatumLabels -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxMetadatumLabels
+  , fromBytes :: Bytes -> Maybe TxMetadatumLabels
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxMetadatumLabels -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxMetadatumLabels
+  , fromHex :: String -> Maybe TxMetadatumLabels
     -- ^ From hex
     -- > fromHex hexStr
   , new :: Effect TxMetadatumLabels
@@ -12271,9 +12307,9 @@ txMetadatumLabels :: TxMetadatumLabelsClass
 txMetadatumLabels =
   { free: txMetadatumLabels_free
   , toBytes: txMetadatumLabels_toBytes
-  , fromBytes: txMetadatumLabels_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txMetadatumLabels_fromBytes a1
   , toHex: txMetadatumLabels_toHex
-  , fromHex: txMetadatumLabels_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txMetadatumLabels_fromHex a1
   , new: txMetadatumLabels_new
   , len: txMetadatumLabels_len
   , get: txMetadatumLabels_get
@@ -12308,12 +12344,12 @@ instance IsBytes TxMetadatumLabels where
 
 foreign import txOut_free :: TxOut -> Effect Unit
 foreign import txOut_toBytes :: TxOut -> Bytes
-foreign import txOut_fromBytes :: Bytes -> TxOut
+foreign import txOut_fromBytes :: Bytes -> ForeignErrorable TxOut
 foreign import txOut_toHex :: TxOut -> String
-foreign import txOut_fromHex :: String -> TxOut
+foreign import txOut_fromHex :: String -> ForeignErrorable TxOut
 foreign import txOut_toJson :: TxOut -> String
 foreign import txOut_toJsValue :: TxOut -> TxOutJson
-foreign import txOut_fromJson :: String -> TxOut
+foreign import txOut_fromJson :: String -> ForeignErrorable TxOut
 foreign import txOut_address :: TxOut -> Address
 foreign import txOut_amount :: TxOut -> Value
 foreign import txOut_dataHash :: TxOut -> Nullable DataHash
@@ -12335,13 +12371,13 @@ type TxOutClass =
   , toBytes :: TxOut -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxOut
+  , fromBytes :: Bytes -> Maybe TxOut
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxOut -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxOut
+  , fromHex :: String -> Maybe TxOut
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxOut -> String
@@ -12350,7 +12386,7 @@ type TxOutClass =
   , toJsValue :: TxOut -> TxOutJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxOut
+  , fromJson :: String -> Maybe TxOut
     -- ^ From json
     -- > fromJson json
   , address :: TxOut -> Address
@@ -12396,12 +12432,12 @@ txOut :: TxOutClass
 txOut =
   { free: txOut_free
   , toBytes: txOut_toBytes
-  , fromBytes: txOut_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txOut_fromBytes a1
   , toHex: txOut_toHex
-  , fromHex: txOut_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txOut_fromHex a1
   , toJson: txOut_toJson
   , toJsValue: txOut_toJsValue
-  , fromJson: txOut_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txOut_fromJson a1
   , address: txOut_address
   , amount: txOut_amount
   , dataHash: \a1 -> Nullable.toMaybe $ txOut_dataHash a1
@@ -12544,12 +12580,12 @@ instance HasFree TxOutBuilder where
 
 foreign import txOuts_free :: TxOuts -> Effect Unit
 foreign import txOuts_toBytes :: TxOuts -> Bytes
-foreign import txOuts_fromBytes :: Bytes -> TxOuts
+foreign import txOuts_fromBytes :: Bytes -> ForeignErrorable TxOuts
 foreign import txOuts_toHex :: TxOuts -> String
-foreign import txOuts_fromHex :: String -> TxOuts
+foreign import txOuts_fromHex :: String -> ForeignErrorable TxOuts
 foreign import txOuts_toJson :: TxOuts -> String
 foreign import txOuts_toJsValue :: TxOuts -> TxOutsJson
-foreign import txOuts_fromJson :: String -> TxOuts
+foreign import txOuts_fromJson :: String -> ForeignErrorable TxOuts
 foreign import txOuts_new :: Effect TxOuts
 foreign import txOuts_len :: TxOuts -> Effect Int
 foreign import txOuts_get :: TxOuts -> Int -> Effect TxOut
@@ -12563,13 +12599,13 @@ type TxOutsClass =
   , toBytes :: TxOuts -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxOuts
+  , fromBytes :: Bytes -> Maybe TxOuts
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxOuts -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxOuts
+  , fromHex :: String -> Maybe TxOuts
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxOuts -> String
@@ -12578,7 +12614,7 @@ type TxOutsClass =
   , toJsValue :: TxOuts -> TxOutsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxOuts
+  , fromJson :: String -> Maybe TxOuts
     -- ^ From json
     -- > fromJson json
   , new :: Effect TxOuts
@@ -12600,12 +12636,12 @@ txOuts :: TxOutsClass
 txOuts =
   { free: txOuts_free
   , toBytes: txOuts_toBytes
-  , fromBytes: txOuts_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txOuts_fromBytes a1
   , toHex: txOuts_toHex
-  , fromHex: txOuts_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txOuts_fromHex a1
   , toJson: txOuts_toJson
   , toJsValue: txOuts_toJsValue
-  , fromJson: txOuts_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txOuts_fromJson a1
   , new: txOuts_new
   , len: txOuts_len
   , get: txOuts_get
@@ -12647,12 +12683,12 @@ instance IsJson TxOuts where
 
 foreign import txUnspentOut_free :: TxUnspentOut -> Effect Unit
 foreign import txUnspentOut_toBytes :: TxUnspentOut -> Bytes
-foreign import txUnspentOut_fromBytes :: Bytes -> TxUnspentOut
+foreign import txUnspentOut_fromBytes :: Bytes -> ForeignErrorable TxUnspentOut
 foreign import txUnspentOut_toHex :: TxUnspentOut -> String
-foreign import txUnspentOut_fromHex :: String -> TxUnspentOut
+foreign import txUnspentOut_fromHex :: String -> ForeignErrorable TxUnspentOut
 foreign import txUnspentOut_toJson :: TxUnspentOut -> String
 foreign import txUnspentOut_toJsValue :: TxUnspentOut -> TxUnspentOutJson
-foreign import txUnspentOut_fromJson :: String -> TxUnspentOut
+foreign import txUnspentOut_fromJson :: String -> ForeignErrorable TxUnspentOut
 foreign import txUnspentOut_new :: TxIn -> TxOut -> TxUnspentOut
 foreign import txUnspentOut_in :: TxUnspentOut -> TxIn
 foreign import txUnspentOut_out :: TxUnspentOut -> TxOut
@@ -12665,13 +12701,13 @@ type TxUnspentOutClass =
   , toBytes :: TxUnspentOut -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxUnspentOut
+  , fromBytes :: Bytes -> Maybe TxUnspentOut
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxUnspentOut -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxUnspentOut
+  , fromHex :: String -> Maybe TxUnspentOut
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxUnspentOut -> String
@@ -12680,7 +12716,7 @@ type TxUnspentOutClass =
   , toJsValue :: TxUnspentOut -> TxUnspentOutJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxUnspentOut
+  , fromJson :: String -> Maybe TxUnspentOut
     -- ^ From json
     -- > fromJson json
   , new :: TxIn -> TxOut -> TxUnspentOut
@@ -12699,12 +12735,12 @@ txUnspentOut :: TxUnspentOutClass
 txUnspentOut =
   { free: txUnspentOut_free
   , toBytes: txUnspentOut_toBytes
-  , fromBytes: txUnspentOut_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txUnspentOut_fromBytes a1
   , toHex: txUnspentOut_toHex
-  , fromHex: txUnspentOut_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txUnspentOut_fromHex a1
   , toJson: txUnspentOut_toJson
   , toJsValue: txUnspentOut_toJsValue
-  , fromJson: txUnspentOut_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txUnspentOut_fromJson a1
   , new: txUnspentOut_new
   , in: txUnspentOut_in
   , out: txUnspentOut_out
@@ -12737,7 +12773,7 @@ instance IsJson TxUnspentOut where
 foreign import txUnspentOuts_free :: TxUnspentOuts -> Effect Unit
 foreign import txUnspentOuts_toJson :: TxUnspentOuts -> String
 foreign import txUnspentOuts_toJsValue :: TxUnspentOuts -> TxUnspentOutsJson
-foreign import txUnspentOuts_fromJson :: String -> TxUnspentOuts
+foreign import txUnspentOuts_fromJson :: String -> ForeignErrorable TxUnspentOuts
 foreign import txUnspentOuts_new :: Effect TxUnspentOuts
 foreign import txUnspentOuts_len :: TxUnspentOuts -> Effect Int
 foreign import txUnspentOuts_get :: TxUnspentOuts -> Int -> Effect TxUnspentOut
@@ -12754,7 +12790,7 @@ type TxUnspentOutsClass =
   , toJsValue :: TxUnspentOuts -> TxUnspentOutsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxUnspentOuts
+  , fromJson :: String -> Maybe TxUnspentOuts
     -- ^ From json
     -- > fromJson json
   , new :: Effect TxUnspentOuts
@@ -12777,7 +12813,7 @@ txUnspentOuts =
   { free: txUnspentOuts_free
   , toJson: txUnspentOuts_toJson
   , toJsValue: txUnspentOuts_toJsValue
-  , fromJson: txUnspentOuts_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txUnspentOuts_fromJson a1
   , new: txUnspentOuts_new
   , len: txUnspentOuts_len
   , get: txUnspentOuts_get
@@ -12808,24 +12844,24 @@ instance IsJson TxUnspentOuts where
 
 foreign import txWitnessSet_free :: TxWitnessSet -> Effect Unit
 foreign import txWitnessSet_toBytes :: TxWitnessSet -> Bytes
-foreign import txWitnessSet_fromBytes :: Bytes -> TxWitnessSet
+foreign import txWitnessSet_fromBytes :: Bytes -> ForeignErrorable TxWitnessSet
 foreign import txWitnessSet_toHex :: TxWitnessSet -> String
-foreign import txWitnessSet_fromHex :: String -> TxWitnessSet
+foreign import txWitnessSet_fromHex :: String -> ForeignErrorable TxWitnessSet
 foreign import txWitnessSet_toJson :: TxWitnessSet -> String
 foreign import txWitnessSet_toJsValue :: TxWitnessSet -> TxWitnessSetJson
-foreign import txWitnessSet_fromJson :: String -> TxWitnessSet
+foreign import txWitnessSet_fromJson :: String -> ForeignErrorable TxWitnessSet
 foreign import txWitnessSet_setVkeys :: TxWitnessSet -> Vkeywitnesses -> Effect Unit
-foreign import txWitnessSet_vkeys :: TxWitnessSet -> Effect (Nullable Vkeywitnesses)
+foreign import txWitnessSet_vkeys :: TxWitnessSet -> Effect ((Nullable Vkeywitnesses))
 foreign import txWitnessSet_setNativeScripts :: TxWitnessSet -> NativeScripts -> Effect Unit
-foreign import txWitnessSet_nativeScripts :: TxWitnessSet -> Effect (Nullable NativeScripts)
+foreign import txWitnessSet_nativeScripts :: TxWitnessSet -> Effect ((Nullable NativeScripts))
 foreign import txWitnessSet_setBootstraps :: TxWitnessSet -> BootstrapWitnesses -> Effect Unit
-foreign import txWitnessSet_bootstraps :: TxWitnessSet -> Effect (Nullable BootstrapWitnesses)
+foreign import txWitnessSet_bootstraps :: TxWitnessSet -> Effect ((Nullable BootstrapWitnesses))
 foreign import txWitnessSet_setPlutusScripts :: TxWitnessSet -> PlutusScripts -> Effect Unit
-foreign import txWitnessSet_plutusScripts :: TxWitnessSet -> Effect (Nullable PlutusScripts)
+foreign import txWitnessSet_plutusScripts :: TxWitnessSet -> Effect ((Nullable PlutusScripts))
 foreign import txWitnessSet_setPlutusData :: TxWitnessSet -> PlutusList -> Effect Unit
-foreign import txWitnessSet_plutusData :: TxWitnessSet -> Effect (Nullable PlutusList)
+foreign import txWitnessSet_plutusData :: TxWitnessSet -> Effect ((Nullable PlutusList))
 foreign import txWitnessSet_setRedeemers :: TxWitnessSet -> Redeemers -> Effect Unit
-foreign import txWitnessSet_redeemers :: TxWitnessSet -> Effect (Nullable Redeemers)
+foreign import txWitnessSet_redeemers :: TxWitnessSet -> Effect ((Nullable Redeemers))
 foreign import txWitnessSet_new :: Effect TxWitnessSet
 
 -- | Transaction witness set class
@@ -12836,13 +12872,13 @@ type TxWitnessSetClass =
   , toBytes :: TxWitnessSet -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxWitnessSet
+  , fromBytes :: Bytes -> Maybe TxWitnessSet
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxWitnessSet -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxWitnessSet
+  , fromHex :: String -> Maybe TxWitnessSet
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxWitnessSet -> String
@@ -12851,43 +12887,43 @@ type TxWitnessSetClass =
   , toJsValue :: TxWitnessSet -> TxWitnessSetJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxWitnessSet
+  , fromJson :: String -> Maybe TxWitnessSet
     -- ^ From json
     -- > fromJson json
   , setVkeys :: TxWitnessSet -> Vkeywitnesses -> Effect Unit
     -- ^ Set vkeys
     -- > setVkeys self vkeys
-  , vkeys :: TxWitnessSet -> Effect (Maybe Vkeywitnesses)
+  , vkeys :: TxWitnessSet -> Effect ((Maybe Vkeywitnesses))
     -- ^ Vkeys
     -- > vkeys self
   , setNativeScripts :: TxWitnessSet -> NativeScripts -> Effect Unit
     -- ^ Set native scripts
     -- > setNativeScripts self nativeScripts
-  , nativeScripts :: TxWitnessSet -> Effect (Maybe NativeScripts)
+  , nativeScripts :: TxWitnessSet -> Effect ((Maybe NativeScripts))
     -- ^ Native scripts
     -- > nativeScripts self
   , setBootstraps :: TxWitnessSet -> BootstrapWitnesses -> Effect Unit
     -- ^ Set bootstraps
     -- > setBootstraps self bootstraps
-  , bootstraps :: TxWitnessSet -> Effect (Maybe BootstrapWitnesses)
+  , bootstraps :: TxWitnessSet -> Effect ((Maybe BootstrapWitnesses))
     -- ^ Bootstraps
     -- > bootstraps self
   , setPlutusScripts :: TxWitnessSet -> PlutusScripts -> Effect Unit
     -- ^ Set plutus scripts
     -- > setPlutusScripts self plutusScripts
-  , plutusScripts :: TxWitnessSet -> Effect (Maybe PlutusScripts)
+  , plutusScripts :: TxWitnessSet -> Effect ((Maybe PlutusScripts))
     -- ^ Plutus scripts
     -- > plutusScripts self
   , setPlutusData :: TxWitnessSet -> PlutusList -> Effect Unit
     -- ^ Set plutus data
     -- > setPlutusData self plutusData
-  , plutusData :: TxWitnessSet -> Effect (Maybe PlutusList)
+  , plutusData :: TxWitnessSet -> Effect ((Maybe PlutusList))
     -- ^ Plutus data
     -- > plutusData self
   , setRedeemers :: TxWitnessSet -> Redeemers -> Effect Unit
     -- ^ Set redeemers
     -- > setRedeemers self redeemers
-  , redeemers :: TxWitnessSet -> Effect (Maybe Redeemers)
+  , redeemers :: TxWitnessSet -> Effect ((Maybe Redeemers))
     -- ^ Redeemers
     -- > redeemers self
   , new :: Effect TxWitnessSet
@@ -12900,12 +12936,12 @@ txWitnessSet :: TxWitnessSetClass
 txWitnessSet =
   { free: txWitnessSet_free
   , toBytes: txWitnessSet_toBytes
-  , fromBytes: txWitnessSet_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txWitnessSet_fromBytes a1
   , toHex: txWitnessSet_toHex
-  , fromHex: txWitnessSet_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txWitnessSet_fromHex a1
   , toJson: txWitnessSet_toJson
   , toJsValue: txWitnessSet_toJsValue
-  , fromJson: txWitnessSet_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txWitnessSet_fromJson a1
   , setVkeys: txWitnessSet_setVkeys
   , vkeys: \a1 -> Nullable.toMaybe <$> txWitnessSet_vkeys a1
   , setNativeScripts: txWitnessSet_setNativeScripts
@@ -12947,12 +12983,12 @@ instance IsJson TxWitnessSet where
 
 foreign import txWitnessSets_free :: TxWitnessSets -> Effect Unit
 foreign import txWitnessSets_toBytes :: TxWitnessSets -> Bytes
-foreign import txWitnessSets_fromBytes :: Bytes -> TxWitnessSets
+foreign import txWitnessSets_fromBytes :: Bytes -> ForeignErrorable TxWitnessSets
 foreign import txWitnessSets_toHex :: TxWitnessSets -> String
-foreign import txWitnessSets_fromHex :: String -> TxWitnessSets
+foreign import txWitnessSets_fromHex :: String -> ForeignErrorable TxWitnessSets
 foreign import txWitnessSets_toJson :: TxWitnessSets -> String
 foreign import txWitnessSets_toJsValue :: TxWitnessSets -> TxWitnessSetsJson
-foreign import txWitnessSets_fromJson :: String -> TxWitnessSets
+foreign import txWitnessSets_fromJson :: String -> ForeignErrorable TxWitnessSets
 foreign import txWitnessSets_new :: Effect TxWitnessSets
 foreign import txWitnessSets_len :: TxWitnessSets -> Effect Number
 foreign import txWitnessSets_get :: TxWitnessSets -> Number -> Effect TxWitnessSet
@@ -12966,13 +13002,13 @@ type TxWitnessSetsClass =
   , toBytes :: TxWitnessSets -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> TxWitnessSets
+  , fromBytes :: Bytes -> Maybe TxWitnessSets
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: TxWitnessSets -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> TxWitnessSets
+  , fromHex :: String -> Maybe TxWitnessSets
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: TxWitnessSets -> String
@@ -12981,7 +13017,7 @@ type TxWitnessSetsClass =
   , toJsValue :: TxWitnessSets -> TxWitnessSetsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> TxWitnessSets
+  , fromJson :: String -> Maybe TxWitnessSets
     -- ^ From json
     -- > fromJson json
   , new :: Effect TxWitnessSets
@@ -13003,12 +13039,12 @@ txWitnessSets :: TxWitnessSetsClass
 txWitnessSets =
   { free: txWitnessSets_free
   , toBytes: txWitnessSets_toBytes
-  , fromBytes: txWitnessSets_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ txWitnessSets_fromBytes a1
   , toHex: txWitnessSets_toHex
-  , fromHex: txWitnessSets_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ txWitnessSets_fromHex a1
   , toJson: txWitnessSets_toJson
   , toJsValue: txWitnessSets_toJsValue
-  , fromJson: txWitnessSets_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ txWitnessSets_fromJson a1
   , new: txWitnessSets_new
   , len: txWitnessSets_len
   , get: txWitnessSets_get
@@ -13087,14 +13123,14 @@ foreign import txInsBuilder_countMissingInScripts :: TxInsBuilder -> Effect Numb
 foreign import txInsBuilder_addRequiredNativeInScripts :: TxInsBuilder -> NativeScripts -> Effect Number
 foreign import txInsBuilder_addRequiredPlutusInScripts :: TxInsBuilder -> PlutusWitnesses -> Effect Number
 foreign import txInsBuilder_getRefIns :: TxInsBuilder -> Effect TxIns
-foreign import txInsBuilder_getNativeInScripts :: TxInsBuilder -> Effect (Nullable NativeScripts)
-foreign import txInsBuilder_getPlutusInScripts :: TxInsBuilder -> Effect (Nullable PlutusWitnesses)
+foreign import txInsBuilder_getNativeInScripts :: TxInsBuilder -> Effect ((Nullable NativeScripts))
+foreign import txInsBuilder_getPlutusInScripts :: TxInsBuilder -> Effect ((Nullable PlutusWitnesses))
 foreign import txInsBuilder_len :: TxInsBuilder -> Effect Number
 foreign import txInsBuilder_addRequiredSigner :: TxInsBuilder -> Ed25519KeyHash -> Effect Unit
 foreign import txInsBuilder_addRequiredSigners :: TxInsBuilder -> Ed25519KeyHashes -> Effect Unit
 foreign import txInsBuilder_totalValue :: TxInsBuilder -> Effect Value
 foreign import txInsBuilder_ins :: TxInsBuilder -> Effect TxIns
-foreign import txInsBuilder_insOption :: TxInsBuilder -> Effect (Nullable TxIns)
+foreign import txInsBuilder_insOption :: TxInsBuilder -> Effect ((Nullable TxIns))
 
 -- | Tx inputs builder class
 type TxInsBuilderClass =
@@ -13134,10 +13170,10 @@ type TxInsBuilderClass =
   , getRefIns :: TxInsBuilder -> Effect TxIns
     -- ^ Get ref inputs
     -- > getRefIns self
-  , getNativeInScripts :: TxInsBuilder -> Effect (Maybe NativeScripts)
+  , getNativeInScripts :: TxInsBuilder -> Effect ((Maybe NativeScripts))
     -- ^ Get native input scripts
     -- > getNativeInScripts self
-  , getPlutusInScripts :: TxInsBuilder -> Effect (Maybe PlutusWitnesses)
+  , getPlutusInScripts :: TxInsBuilder -> Effect ((Maybe PlutusWitnesses))
     -- ^ Get plutus input scripts
     -- > getPlutusInScripts self
   , len :: TxInsBuilder -> Effect Number
@@ -13155,7 +13191,7 @@ type TxInsBuilderClass =
   , ins :: TxInsBuilder -> Effect TxIns
     -- ^ Inputs
     -- > ins self
-  , insOption :: TxInsBuilder -> Effect (Maybe TxIns)
+  , insOption :: TxInsBuilder -> Effect ((Maybe TxIns))
     -- ^ Inputs option
     -- > insOption self
   }
@@ -13193,12 +13229,12 @@ instance HasFree TxInsBuilder where
 
 foreign import url_free :: URL -> Effect Unit
 foreign import url_toBytes :: URL -> Bytes
-foreign import url_fromBytes :: Bytes -> URL
+foreign import url_fromBytes :: Bytes -> ForeignErrorable URL
 foreign import url_toHex :: URL -> String
-foreign import url_fromHex :: String -> URL
+foreign import url_fromHex :: String -> ForeignErrorable URL
 foreign import url_toJson :: URL -> String
 foreign import url_toJsValue :: URL -> URLJson
-foreign import url_fromJson :: String -> URL
+foreign import url_fromJson :: String -> ForeignErrorable URL
 foreign import url_new :: String -> URL
 foreign import url_url :: URL -> String
 
@@ -13210,13 +13246,13 @@ type URLClass =
   , toBytes :: URL -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> URL
+  , fromBytes :: Bytes -> Maybe URL
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: URL -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> URL
+  , fromHex :: String -> Maybe URL
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: URL -> String
@@ -13225,7 +13261,7 @@ type URLClass =
   , toJsValue :: URL -> URLJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> URL
+  , fromJson :: String -> Maybe URL
     -- ^ From json
     -- > fromJson json
   , new :: String -> URL
@@ -13241,12 +13277,12 @@ url :: URLClass
 url =
   { free: url_free
   , toBytes: url_toBytes
-  , fromBytes: url_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ url_fromBytes a1
   , toHex: url_toHex
-  , fromHex: url_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ url_fromHex a1
   , toJson: url_toJson
   , toJsValue: url_toJsValue
-  , fromJson: url_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ url_fromJson a1
   , new: url_new
   , url: url_url
   }
@@ -13277,12 +13313,12 @@ instance IsJson URL where
 
 foreign import unitInterval_free :: UnitInterval -> Effect Unit
 foreign import unitInterval_toBytes :: UnitInterval -> Bytes
-foreign import unitInterval_fromBytes :: Bytes -> UnitInterval
+foreign import unitInterval_fromBytes :: Bytes -> ForeignErrorable UnitInterval
 foreign import unitInterval_toHex :: UnitInterval -> String
-foreign import unitInterval_fromHex :: String -> UnitInterval
+foreign import unitInterval_fromHex :: String -> ForeignErrorable UnitInterval
 foreign import unitInterval_toJson :: UnitInterval -> String
 foreign import unitInterval_toJsValue :: UnitInterval -> UnitIntervalJson
-foreign import unitInterval_fromJson :: String -> UnitInterval
+foreign import unitInterval_fromJson :: String -> ForeignErrorable UnitInterval
 foreign import unitInterval_numerator :: UnitInterval -> BigNum
 foreign import unitInterval_denominator :: UnitInterval -> BigNum
 foreign import unitInterval_new :: BigNum -> BigNum -> UnitInterval
@@ -13295,13 +13331,13 @@ type UnitIntervalClass =
   , toBytes :: UnitInterval -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> UnitInterval
+  , fromBytes :: Bytes -> Maybe UnitInterval
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: UnitInterval -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> UnitInterval
+  , fromHex :: String -> Maybe UnitInterval
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: UnitInterval -> String
@@ -13310,7 +13346,7 @@ type UnitIntervalClass =
   , toJsValue :: UnitInterval -> UnitIntervalJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> UnitInterval
+  , fromJson :: String -> Maybe UnitInterval
     -- ^ From json
     -- > fromJson json
   , numerator :: UnitInterval -> BigNum
@@ -13329,12 +13365,12 @@ unitInterval :: UnitIntervalClass
 unitInterval =
   { free: unitInterval_free
   , toBytes: unitInterval_toBytes
-  , fromBytes: unitInterval_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ unitInterval_fromBytes a1
   , toHex: unitInterval_toHex
-  , fromHex: unitInterval_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ unitInterval_fromHex a1
   , toJson: unitInterval_toJson
   , toJsValue: unitInterval_toJsValue
-  , fromJson: unitInterval_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ unitInterval_fromJson a1
   , numerator: unitInterval_numerator
   , denominator: unitInterval_denominator
   , new: unitInterval_new
@@ -13366,12 +13402,12 @@ instance IsJson UnitInterval where
 
 foreign import update_free :: Update -> Effect Unit
 foreign import update_toBytes :: Update -> Bytes
-foreign import update_fromBytes :: Bytes -> Update
+foreign import update_fromBytes :: Bytes -> ForeignErrorable Update
 foreign import update_toHex :: Update -> String
-foreign import update_fromHex :: String -> Update
+foreign import update_fromHex :: String -> ForeignErrorable Update
 foreign import update_toJson :: Update -> String
 foreign import update_toJsValue :: Update -> UpdateJson
-foreign import update_fromJson :: String -> Update
+foreign import update_fromJson :: String -> ForeignErrorable Update
 foreign import update_proposedProtocolParameterUpdates :: Update -> ProposedProtocolParameterUpdates
 foreign import update_epoch :: Update -> Number
 foreign import update_new :: ProposedProtocolParameterUpdates -> Number -> Update
@@ -13384,13 +13420,13 @@ type UpdateClass =
   , toBytes :: Update -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Update
+  , fromBytes :: Bytes -> Maybe Update
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Update -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Update
+  , fromHex :: String -> Maybe Update
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Update -> String
@@ -13399,7 +13435,7 @@ type UpdateClass =
   , toJsValue :: Update -> UpdateJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Update
+  , fromJson :: String -> Maybe Update
     -- ^ From json
     -- > fromJson json
   , proposedProtocolParameterUpdates :: Update -> ProposedProtocolParameterUpdates
@@ -13418,12 +13454,12 @@ update :: UpdateClass
 update =
   { free: update_free
   , toBytes: update_toBytes
-  , fromBytes: update_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ update_fromBytes a1
   , toHex: update_toHex
-  , fromHex: update_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ update_fromHex a1
   , toJson: update_toJson
   , toJsValue: update_toJsValue
-  , fromJson: update_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ update_fromJson a1
   , proposedProtocolParameterUpdates: update_proposedProtocolParameterUpdates
   , epoch: update_epoch
   , new: update_new
@@ -13455,12 +13491,12 @@ instance IsJson Update where
 
 foreign import vrfCert_free :: VRFCert -> Effect Unit
 foreign import vrfCert_toBytes :: VRFCert -> Bytes
-foreign import vrfCert_fromBytes :: Bytes -> VRFCert
+foreign import vrfCert_fromBytes :: Bytes -> ForeignErrorable VRFCert
 foreign import vrfCert_toHex :: VRFCert -> String
-foreign import vrfCert_fromHex :: String -> VRFCert
+foreign import vrfCert_fromHex :: String -> ForeignErrorable VRFCert
 foreign import vrfCert_toJson :: VRFCert -> String
 foreign import vrfCert_toJsValue :: VRFCert -> VRFCertJson
-foreign import vrfCert_fromJson :: String -> VRFCert
+foreign import vrfCert_fromJson :: String -> ForeignErrorable VRFCert
 foreign import vrfCert_out :: VRFCert -> Bytes
 foreign import vrfCert_proof :: VRFCert -> Bytes
 foreign import vrfCert_new :: Bytes -> Bytes -> VRFCert
@@ -13473,13 +13509,13 @@ type VRFCertClass =
   , toBytes :: VRFCert -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> VRFCert
+  , fromBytes :: Bytes -> Maybe VRFCert
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: VRFCert -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> VRFCert
+  , fromHex :: String -> Maybe VRFCert
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: VRFCert -> String
@@ -13488,7 +13524,7 @@ type VRFCertClass =
   , toJsValue :: VRFCert -> VRFCertJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> VRFCert
+  , fromJson :: String -> Maybe VRFCert
     -- ^ From json
     -- > fromJson json
   , out :: VRFCert -> Bytes
@@ -13507,12 +13543,12 @@ vrfCert :: VRFCertClass
 vrfCert =
   { free: vrfCert_free
   , toBytes: vrfCert_toBytes
-  , fromBytes: vrfCert_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ vrfCert_fromBytes a1
   , toHex: vrfCert_toHex
-  , fromHex: vrfCert_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ vrfCert_fromHex a1
   , toJson: vrfCert_toJson
   , toJsValue: vrfCert_toJsValue
-  , fromJson: vrfCert_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ vrfCert_fromJson a1
   , out: vrfCert_out
   , proof: vrfCert_proof
   , new: vrfCert_new
@@ -13543,19 +13579,19 @@ instance IsJson VRFCert where
 -- VRFKey hash
 
 foreign import vrfKeyHash_free :: VRFKeyHash -> Effect Unit
-foreign import vrfKeyHash_fromBytes :: Bytes -> VRFKeyHash
+foreign import vrfKeyHash_fromBytes :: Bytes -> ForeignErrorable VRFKeyHash
 foreign import vrfKeyHash_toBytes :: VRFKeyHash -> Bytes
 foreign import vrfKeyHash_toBech32 :: VRFKeyHash -> String -> String
-foreign import vrfKeyHash_fromBech32 :: String -> VRFKeyHash
+foreign import vrfKeyHash_fromBech32 :: String -> ForeignErrorable VRFKeyHash
 foreign import vrfKeyHash_toHex :: VRFKeyHash -> String
-foreign import vrfKeyHash_fromHex :: String -> VRFKeyHash
+foreign import vrfKeyHash_fromHex :: String -> ForeignErrorable VRFKeyHash
 
 -- | VRFKey hash class
 type VRFKeyHashClass =
   { free :: VRFKeyHash -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> VRFKeyHash
+  , fromBytes :: Bytes -> Maybe VRFKeyHash
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: VRFKeyHash -> Bytes
@@ -13564,13 +13600,13 @@ type VRFKeyHashClass =
   , toBech32 :: VRFKeyHash -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> VRFKeyHash
+  , fromBech32 :: String -> Maybe VRFKeyHash
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: VRFKeyHash -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> VRFKeyHash
+  , fromHex :: String -> Maybe VRFKeyHash
     -- ^ From hex
     -- > fromHex hex
   }
@@ -13579,12 +13615,12 @@ type VRFKeyHashClass =
 vrfKeyHash :: VRFKeyHashClass
 vrfKeyHash =
   { free: vrfKeyHash_free
-  , fromBytes: vrfKeyHash_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ vrfKeyHash_fromBytes a1
   , toBytes: vrfKeyHash_toBytes
   , toBech32: vrfKeyHash_toBech32
-  , fromBech32: vrfKeyHash_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ vrfKeyHash_fromBech32 a1
   , toHex: vrfKeyHash_toHex
-  , fromHex: vrfKeyHash_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ vrfKeyHash_fromHex a1
   }
 
 instance HasFree VRFKeyHash where
@@ -13605,19 +13641,19 @@ instance IsBytes VRFKeyHash where
 -- VRFVKey
 
 foreign import vrfvKey_free :: VRFVKey -> Effect Unit
-foreign import vrfvKey_fromBytes :: Bytes -> VRFVKey
+foreign import vrfvKey_fromBytes :: Bytes -> ForeignErrorable VRFVKey
 foreign import vrfvKey_toBytes :: VRFVKey -> Bytes
 foreign import vrfvKey_toBech32 :: VRFVKey -> String -> String
-foreign import vrfvKey_fromBech32 :: String -> VRFVKey
+foreign import vrfvKey_fromBech32 :: String -> ForeignErrorable VRFVKey
 foreign import vrfvKey_toHex :: VRFVKey -> String
-foreign import vrfvKey_fromHex :: String -> VRFVKey
+foreign import vrfvKey_fromHex :: String -> ForeignErrorable VRFVKey
 
 -- | VRFVKey class
 type VRFVKeyClass =
   { free :: VRFVKey -> Effect Unit
     -- ^ Free
     -- > free self
-  , fromBytes :: Bytes -> VRFVKey
+  , fromBytes :: Bytes -> Maybe VRFVKey
     -- ^ From bytes
     -- > fromBytes bytes
   , toBytes :: VRFVKey -> Bytes
@@ -13626,13 +13662,13 @@ type VRFVKeyClass =
   , toBech32 :: VRFVKey -> String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
-  , fromBech32 :: String -> VRFVKey
+  , fromBech32 :: String -> Maybe VRFVKey
     -- ^ From bech32
     -- > fromBech32 bechStr
   , toHex :: VRFVKey -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> VRFVKey
+  , fromHex :: String -> Maybe VRFVKey
     -- ^ From hex
     -- > fromHex hex
   }
@@ -13641,12 +13677,12 @@ type VRFVKeyClass =
 vrfvKey :: VRFVKeyClass
 vrfvKey =
   { free: vrfvKey_free
-  , fromBytes: vrfvKey_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ vrfvKey_fromBytes a1
   , toBytes: vrfvKey_toBytes
   , toBech32: vrfvKey_toBech32
-  , fromBech32: vrfvKey_fromBech32
+  , fromBech32: \a1 -> runForeignMaybe $ vrfvKey_fromBech32 a1
   , toHex: vrfvKey_toHex
-  , fromHex: vrfvKey_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ vrfvKey_fromHex a1
   }
 
 instance HasFree VRFVKey where
@@ -13668,12 +13704,12 @@ instance IsBytes VRFVKey where
 
 foreign import value_free :: Value -> Effect Unit
 foreign import value_toBytes :: Value -> Bytes
-foreign import value_fromBytes :: Bytes -> Value
+foreign import value_fromBytes :: Bytes -> ForeignErrorable Value
 foreign import value_toHex :: Value -> String
-foreign import value_fromHex :: String -> Value
+foreign import value_fromHex :: String -> ForeignErrorable Value
 foreign import value_toJson :: Value -> String
 foreign import value_toJsValue :: Value -> ValueJson
-foreign import value_fromJson :: String -> Value
+foreign import value_fromJson :: String -> ForeignErrorable Value
 foreign import value_new :: BigNum -> Value
 foreign import value_newFromAssets :: MultiAsset -> Value
 foreign import value_newWithAssets :: BigNum -> MultiAsset -> Value
@@ -13696,13 +13732,13 @@ type ValueClass =
   , toBytes :: Value -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Value
+  , fromBytes :: Bytes -> Maybe Value
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Value -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Value
+  , fromHex :: String -> Maybe Value
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Value -> String
@@ -13711,7 +13747,7 @@ type ValueClass =
   , toJsValue :: Value -> ValueJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Value
+  , fromJson :: String -> Maybe Value
     -- ^ From json
     -- > fromJson json
   , new :: BigNum -> Value
@@ -13760,12 +13796,12 @@ value :: ValueClass
 value =
   { free: value_free
   , toBytes: value_toBytes
-  , fromBytes: value_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ value_fromBytes a1
   , toHex: value_toHex
-  , fromHex: value_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ value_fromHex a1
   , toJson: value_toJson
   , toJsValue: value_toJsValue
-  , fromJson: value_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ value_fromJson a1
   , new: value_new
   , newFromAssets: value_newFromAssets
   , newWithAssets: value_newWithAssets
@@ -13807,12 +13843,12 @@ instance IsJson Value where
 
 foreign import vkey_free :: Vkey -> Effect Unit
 foreign import vkey_toBytes :: Vkey -> Bytes
-foreign import vkey_fromBytes :: Bytes -> Vkey
+foreign import vkey_fromBytes :: Bytes -> ForeignErrorable Vkey
 foreign import vkey_toHex :: Vkey -> String
-foreign import vkey_fromHex :: String -> Vkey
+foreign import vkey_fromHex :: String -> ForeignErrorable Vkey
 foreign import vkey_toJson :: Vkey -> String
 foreign import vkey_toJsValue :: Vkey -> VkeyJson
-foreign import vkey_fromJson :: String -> Vkey
+foreign import vkey_fromJson :: String -> ForeignErrorable Vkey
 foreign import vkey_new :: PublicKey -> Vkey
 foreign import vkey_publicKey :: Vkey -> PublicKey
 
@@ -13824,13 +13860,13 @@ type VkeyClass =
   , toBytes :: Vkey -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Vkey
+  , fromBytes :: Bytes -> Maybe Vkey
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Vkey -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Vkey
+  , fromHex :: String -> Maybe Vkey
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Vkey -> String
@@ -13839,7 +13875,7 @@ type VkeyClass =
   , toJsValue :: Vkey -> VkeyJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Vkey
+  , fromJson :: String -> Maybe Vkey
     -- ^ From json
     -- > fromJson json
   , new :: PublicKey -> Vkey
@@ -13855,12 +13891,12 @@ vkey :: VkeyClass
 vkey =
   { free: vkey_free
   , toBytes: vkey_toBytes
-  , fromBytes: vkey_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ vkey_fromBytes a1
   , toHex: vkey_toHex
-  , fromHex: vkey_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ vkey_fromHex a1
   , toJson: vkey_toJson
   , toJsValue: vkey_toJsValue
-  , fromJson: vkey_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ vkey_fromJson a1
   , new: vkey_new
   , publicKey: vkey_publicKey
   }
@@ -13940,12 +13976,12 @@ instance MutableLen Vkeys where
 
 foreign import vkeywitness_free :: Vkeywitness -> Effect Unit
 foreign import vkeywitness_toBytes :: Vkeywitness -> Bytes
-foreign import vkeywitness_fromBytes :: Bytes -> Vkeywitness
+foreign import vkeywitness_fromBytes :: Bytes -> ForeignErrorable Vkeywitness
 foreign import vkeywitness_toHex :: Vkeywitness -> String
-foreign import vkeywitness_fromHex :: String -> Vkeywitness
+foreign import vkeywitness_fromHex :: String -> ForeignErrorable Vkeywitness
 foreign import vkeywitness_toJson :: Vkeywitness -> String
 foreign import vkeywitness_toJsValue :: Vkeywitness -> VkeywitnessJson
-foreign import vkeywitness_fromJson :: String -> Vkeywitness
+foreign import vkeywitness_fromJson :: String -> ForeignErrorable Vkeywitness
 foreign import vkeywitness_new :: Vkey -> Ed25519Signature -> Vkeywitness
 foreign import vkeywitness_vkey :: Vkeywitness -> Vkey
 foreign import vkeywitness_signature :: Vkeywitness -> Ed25519Signature
@@ -13958,13 +13994,13 @@ type VkeywitnessClass =
   , toBytes :: Vkeywitness -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Vkeywitness
+  , fromBytes :: Bytes -> Maybe Vkeywitness
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Vkeywitness -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Vkeywitness
+  , fromHex :: String -> Maybe Vkeywitness
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Vkeywitness -> String
@@ -13973,7 +14009,7 @@ type VkeywitnessClass =
   , toJsValue :: Vkeywitness -> VkeywitnessJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Vkeywitness
+  , fromJson :: String -> Maybe Vkeywitness
     -- ^ From json
     -- > fromJson json
   , new :: Vkey -> Ed25519Signature -> Vkeywitness
@@ -13992,12 +14028,12 @@ vkeywitness :: VkeywitnessClass
 vkeywitness =
   { free: vkeywitness_free
   , toBytes: vkeywitness_toBytes
-  , fromBytes: vkeywitness_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ vkeywitness_fromBytes a1
   , toHex: vkeywitness_toHex
-  , fromHex: vkeywitness_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ vkeywitness_fromHex a1
   , toJson: vkeywitness_toJson
   , toJsValue: vkeywitness_toJsValue
-  , fromJson: vkeywitness_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ vkeywitness_fromJson a1
   , new: vkeywitness_new
   , vkey: vkeywitness_vkey
   , signature: vkeywitness_signature
@@ -14078,16 +14114,16 @@ instance MutableLen Vkeywitnesses where
 
 foreign import withdrawals_free :: Withdrawals -> Effect Unit
 foreign import withdrawals_toBytes :: Withdrawals -> Bytes
-foreign import withdrawals_fromBytes :: Bytes -> Withdrawals
+foreign import withdrawals_fromBytes :: Bytes -> ForeignErrorable Withdrawals
 foreign import withdrawals_toHex :: Withdrawals -> String
-foreign import withdrawals_fromHex :: String -> Withdrawals
+foreign import withdrawals_fromHex :: String -> ForeignErrorable Withdrawals
 foreign import withdrawals_toJson :: Withdrawals -> String
 foreign import withdrawals_toJsValue :: Withdrawals -> WithdrawalsJson
-foreign import withdrawals_fromJson :: String -> Withdrawals
+foreign import withdrawals_fromJson :: String -> ForeignErrorable Withdrawals
 foreign import withdrawals_new :: Effect Withdrawals
 foreign import withdrawals_len :: Withdrawals -> Effect Int
-foreign import withdrawals_insert :: Withdrawals -> RewardAddress -> BigNum -> Effect (Nullable BigNum)
-foreign import withdrawals_get :: Withdrawals -> RewardAddress -> Effect (Nullable BigNum)
+foreign import withdrawals_insert :: Withdrawals -> RewardAddress -> BigNum -> Effect ((Nullable BigNum))
+foreign import withdrawals_get :: Withdrawals -> RewardAddress -> Effect ((Nullable BigNum))
 foreign import withdrawals_keys :: Withdrawals -> Effect RewardAddresses
 
 -- | Withdrawals class
@@ -14098,13 +14134,13 @@ type WithdrawalsClass =
   , toBytes :: Withdrawals -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , fromBytes :: Bytes -> Withdrawals
+  , fromBytes :: Bytes -> Maybe Withdrawals
     -- ^ From bytes
     -- > fromBytes bytes
   , toHex :: Withdrawals -> String
     -- ^ To hex
     -- > toHex self
-  , fromHex :: String -> Withdrawals
+  , fromHex :: String -> Maybe Withdrawals
     -- ^ From hex
     -- > fromHex hexStr
   , toJson :: Withdrawals -> String
@@ -14113,7 +14149,7 @@ type WithdrawalsClass =
   , toJsValue :: Withdrawals -> WithdrawalsJson
     -- ^ To js value
     -- > toJsValue self
-  , fromJson :: String -> Withdrawals
+  , fromJson :: String -> Maybe Withdrawals
     -- ^ From json
     -- > fromJson json
   , new :: Effect Withdrawals
@@ -14122,10 +14158,10 @@ type WithdrawalsClass =
   , len :: Withdrawals -> Effect Int
     -- ^ Len
     -- > len self
-  , insert :: Withdrawals -> RewardAddress -> BigNum -> Effect (Maybe BigNum)
+  , insert :: Withdrawals -> RewardAddress -> BigNum -> Effect ((Maybe BigNum))
     -- ^ Insert
     -- > insert self key value
-  , get :: Withdrawals -> RewardAddress -> Effect (Maybe BigNum)
+  , get :: Withdrawals -> RewardAddress -> Effect ((Maybe BigNum))
     -- ^ Get
     -- > get self key
   , keys :: Withdrawals -> Effect RewardAddresses
@@ -14138,12 +14174,12 @@ withdrawals :: WithdrawalsClass
 withdrawals =
   { free: withdrawals_free
   , toBytes: withdrawals_toBytes
-  , fromBytes: withdrawals_fromBytes
+  , fromBytes: \a1 -> runForeignMaybe $ withdrawals_fromBytes a1
   , toHex: withdrawals_toHex
-  , fromHex: withdrawals_fromHex
+  , fromHex: \a1 -> runForeignMaybe $ withdrawals_fromHex a1
   , toJson: withdrawals_toJson
   , toJsValue: withdrawals_toJsValue
-  , fromJson: withdrawals_fromJson
+  , fromJson: \a1 -> runForeignMaybe $ withdrawals_fromJson a1
   , new: withdrawals_new
   , len: withdrawals_len
   , insert: \a1 a2 a3 -> Nullable.toMaybe <$> withdrawals_insert a1 a2 a3

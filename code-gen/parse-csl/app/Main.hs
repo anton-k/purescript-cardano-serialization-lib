@@ -7,5 +7,6 @@ main = do
   exportPursTypes
   exportPursClasses
   exportPursExportList
+  exportJsClasses
 
 
