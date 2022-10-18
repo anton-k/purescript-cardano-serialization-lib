@@ -1511,7 +1511,7 @@ foreign import address_fromJson :: String -> ForeignErrorable Address
 foreign import address_toHex :: Address -> String
 foreign import address_fromHex :: String -> ForeignErrorable Address
 foreign import address_toBytes :: Address -> Bytes
-foreign import address_toBech32 :: Address -> String -> String
+foreign import address_toBech32 :: Address -> Nullable String -> String
 foreign import address_fromBech32 :: String -> ForeignErrorable Address
 foreign import address_networkId :: Address -> Int
 
@@ -1541,7 +1541,7 @@ type AddressClass =
   , toBytes :: Address -> Bytes
     -- ^ To bytes
     -- > toBytes self
-  , toBech32 :: Address -> String -> String
+  , toBech32 :: Address -> Maybe String -> String
     -- ^ To bech32
     -- > toBech32 self prefix
   , fromBech32 :: String -> Maybe Address
@@ -1563,7 +1563,7 @@ address =
   , toHex: address_toHex
   , fromHex: \a1 -> runForeignMaybe $ address_fromHex a1
   , toBytes: address_toBytes
-  , toBech32: address_toBech32
+  , toBech32: \self prefix -> address_toBech32 self (Nullable.toNullable prefix)
   , fromBech32: \a1 -> runForeignMaybe $ address_fromBech32 a1
   , networkId: address_networkId
   }
