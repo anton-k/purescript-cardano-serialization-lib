@@ -1,7 +1,7 @@
 # purescript-cardano-serialization-lib
 
 Pursecript library for cardano frontend types for [emurgo/cardano-serialisation-lib](https://github.com/Emurgo/cardano-serialization-lib)
-At the moment bindongs are only for browser version.
+At the moment bindings are only for browser version.
 
 Cardano serialization library can be used to work with Cardano types on frontend.
 We can create TX and export them to the form which can then be submitted
