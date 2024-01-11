@@ -1,13 +1,15 @@
 module Csl.Gen where
 
+import Control.Monad (guard)
 import Data.Char (isAlphaNum, isUpper, toLower)
 import Data.Map (Map)
 import Data.Map qualified as Map
 import Data.Set (Set)
 import Data.Set qualified as Set
+import Data.Functor ((<&>))
 import Data.List as L
 import Data.List.Split (splitOn)
-import Data.Maybe (mapMaybe)
+import Data.Maybe (mapMaybe, Maybe(Just, Nothing), listToMaybe, catMaybes)
 import Data.Text qualified as T (pack, unpack, replace)
 import Data.Text.Manipulate qualified as T (toCamel, upperHead, lowerHead, toTitle, toTrain)
 import Data.List.Extra (trim)
@@ -23,35 +25,27 @@ standardTypes = Set.fromList
   , "Effect"
   , "Number"
   , "Unit"
-  , "Bytes"
+  , "ByteArray"
+  , "Uint32Array"
+  , "This"
   ]
 
 extraExport :: [String]
 extraExport =
-  [ "Bytes"
-  , "class IsHex, toHex, fromHex"
-  , "class IsBech32, toBech32, fromBech32"
-  , "class IsJson, toJson, fromJson"
-  , "class IsStr, toStr, fromStr"
-  , "class IsBytes, toBytes, fromBytes"
-  , "class ToJsValue, toJsValue"
-  , "class HasFree, free"
-  , "class MutableLen, getLen"
-  , "class MutableList, getItem, addItem, emptyList"
-  , "toMutableList"
-  , "IntClass"
-  , "int"
+  [ "ForeignErrorable"
   ]
 
-exportListPurs :: [Fun] -> [Class] -> [String]
+exportListPurs :: [Fun] -> [Class] -> String
 exportListPurs funs cls =
-  fmap (indent . (", " <> )) $ extraExport ++ (toName . fun'name <$> funs) ++ (fromType =<< classTypes cls)
+  L.intercalate "\n  , " $
+  extraExport ++
+  (classMethods =<< cls) ++
+  (toName . fun'name <$> funs) ++
+  (fromType =<< classTypes cls)
   where
-    fromType ty
-      | isJsonType ty = [ty]
-      | hasNoClass ty = [ty]
-      | otherwise = [ty, ty <> "Class", lowerHead ty]
-
+    fromType ty = [ty]
+    classMethods :: Class -> [String]
+    classMethods (Class name ms) = map (mappend (toTypePrefix name <> "_") . toName . fun'name . method'fun) (filter (not . isCommon . method'fun) ms)
     hasNoClass = flip Set.member hasNoClassSet
     hasNoClassSet = Set.fromList ["This", "Uint32Array"]
 
@@ -69,12 +63,8 @@ classTypes xs = postProcTypes $ fromClass =<< xs
 typePurs :: String -> String
 typePurs ty =
   unlines
-    [ typeCommentPurs ty
-    , typeDefPurs ty
+    [ typeDefPurs ty
     ]
-
-typeCommentPurs :: String -> String
-typeCommentPurs ty = preComment $ toTitle ty
 
 typeDefPurs :: String -> String
 typeDefPurs ty
@@ -132,6 +122,47 @@ data FunSpec = FunSpec
   , funSpec'pure     :: Bool
   }
 
+isCommon :: Fun -> Bool
+isCommon (Fun "free" _ _) = True
+isCommon (Fun "to_bytes" _ _) = True
+isCommon (Fun "from_bytes" _ _) = True
+isCommon (Fun "to_hex" _ _) = True
+isCommon (Fun "from_hex" _ _) = True
+isCommon (Fun "to_json" _ _) = True
+isCommon (Fun "from_json" _ _) = True
+isCommon (Fun "to_js_value" _ _) = True
+isCommon (Fun "from_js_value" _ _) = True
+-- sometimes these are with prefixes, sometimes not. they resist abstraction
+-- isCommon (Fun "from_bech32" _ _) = True
+-- isCommon (Fun "to_bech32" _ _) = True
+isCommon (Fun "len" _ _) = True
+isCommon (Fun "add" _ _) = True
+isCommon (Fun "insert" _ _) = True
+isCommon (Fun "get" _ _) = True
+isCommon (Fun "keys" _ _) = True
+isCommon (Fun _ _ _) = False
+
+isListContainer :: Class -> Maybe String
+isListContainer (Class _ methods) = do
+  guard $ all (`elem` methodNames) [ "add", "len", "get" ]
+  listToMaybe $ mapMaybe getElement methods
+  where
+    methodNames = fun'name . method'fun <$> methods
+    getElement :: Method -> Maybe String
+    getElement (Method _ (Fun "add" [Arg _ elemType] _)) = Just elemType
+    getElement _ = Nothing
+
+isMapContainer :: Class -> Maybe (String, String)
+isMapContainer (Class _ methods) = do
+  guard $ all (`elem` methodNames) [ "insert", "get", "len", "keys" ]
+  listToMaybe $ mapMaybe getKeyValue methods
+  where
+    methodNames = fun'name . method'fun <$> methods
+    getKeyValue :: Method -> Maybe (String, String)
+    getKeyValue (Method _ (Fun "insert" [Arg _ keyType, Arg _ valueType] _)) =
+      Just (keyType, valueType)
+    getKeyValue _ = Nothing
+
 funJs :: Fun -> String
 funJs f = funJsBy (FunSpec "CSL" False "" (isPure "" f)) f
 
@@ -154,16 +185,47 @@ funJsBy (FunSpec parent isSkipFirst prefix pureFun) (Fun name args res) =
 
 data HandleNulls = UseNullable | UseMaybe
 
+commonInstances :: Class -> String
+commonInstances (Class name methods) = unlines $
+  [ "instance IsCsl " <> name <> " where\n  className _ = \"" <> name <> "\"" ] <>
+  (if hasInstanceMethod "to_bytes" && hasInstanceMethod "from_bytes"
+   then [ "instance IsBytes " <> name ]
+   else []) <>
+  (if hasInstanceMethod "to_json" && hasInstanceMethod "from_json"
+   then [ "instance IsJson " <> name
+        , "instance EncodeAeson " <> name <> " where encodeAeson = cslToAeson"
+        , "instance DecodeAeson " <> name <> " where decodeAeson = cslFromAeson"
+        ]
+   else [])
+  where
+    hasInstanceMethod str = Set.member str methodNameSet
+    methodNameSet = Set.fromList $ fun'name . method'fun <$> methods
+
+containerInstances :: Class -> Maybe String
+containerInstances cls@(Class name _) =
+  fmap unlines $
+  notEmptyList $
+  catMaybes
+  [ isListContainer cls <&> \elemType ->
+    "instance IsListContainer " <> unwords [ name, elemType ]
+  , isMapContainer cls <&> \(keyType, valueType) ->
+      "instance IsMapContainer " <> unwords [ name, keyType, valueType ]
+  ]
+  where
+    notEmptyList :: [a] -> Maybe [a]
+    notEmptyList [] = Nothing
+    notEmptyList xs = Just xs
+
 classPurs :: Class -> String
-classPurs (Class name ms) = mappend "\n" $
+classPurs cls@(Class name ms) = mappend "\n" $
   L.intercalate "\n\n" $ fmap trim
     [ intro
+    , typePurs name
     , methodDefs
-    , classDef
-    , valDef
     , instances
     ]
   where
+    filteredClass = Class name $ filter (not . isCommon . method'fun) ms
     isNullType ty = elem '?' ty || isSuffixOf "| void" ty
 
     intro = unlines
@@ -198,14 +260,14 @@ classPurs (Class name ms) = mappend "\n" $
       unlines
         [ preComment $ unwords [toTitle name, "class"]
         , unwords ["type", valClassName, "="]
-        , recordDef (fmap (\m -> methodComment m $ psMethodName m <> " :: " <> psSig UseMaybe m) ms)
+        , recordDef (fmap (\m -> methodComment m $ psMethodName m <> " :: " <> psSig UseNullable m) ms)
         ]
 
     recordDef = \case
       [] -> "{}"
       a:as -> unlines [indent $ "{ " <> a, unlines (fmap (indent . (", " <>)) as) <> indent "}" ]
 
-    methodDefs = unlines $ fmap toDef ms
+    methodDefs = unlines $ fmap toDef $ filter (not . isCommon . method'fun) ms
       where
         toDef m = unwords ["foreign import", jsMethodName m, "::", psSig UseNullable m]
 
@@ -266,7 +328,7 @@ classPurs (Class name ms) = mappend "\n" $
           | otherwise                           = id
           where
             ty = case nullType of
-              UseNullable -> "ForeignErrorable"
+              UseNullable -> "Nullable"
               _           -> "Maybe"
 
         fromNullType = \case
@@ -296,22 +358,21 @@ classPurs (Class name ms) = mappend "\n" $
 
     instances
       | name == "Int" = ""
-      | otherwise = unlines $ mapMaybe id $
-        Just freeInst : showInst : mutListInst : toJsValueInst : map toConvertInst ["hex", "bech32", "str", "bytes", "json"]
+      | otherwise = unlines $ catMaybes $
+        [ Just $ commonInstances cls
+        , containerInstances cls
+        ]
 
     proxyMethod str = unwords [str, "=", valName <> "." <> str]
 
-    freeInst = toInst "HasFree" [proxyMethod "free"]
-
     hasInstanceMethod str = Set.member str methodNameSet
 
-    showInst
-      | hasInstanceMethod "to_str" = with "to_str"
-      | hasInstanceMethod "to_hex" = with "to_hex"
-      | hasInstanceMethod "to_bech32" && getArgNum "to_bech32" == Just 0 = with "to_bech32"
-      | otherwise = Nothing
-      where
-        with name =Just $ toInst "Show" [instMethod "show" name]
+      -- | hasInstanceMethod "to_str" = with "to_str"
+      -- | hasInstanceMethod "to_hex" = with "to_hex"
+      -- | hasInstanceMethod "to_bech32" && getArgNum "to_bech32" == Just 0 = with "to_bech32"
+      -- | otherwise = Nothing
+      -- where
+      --   with name =Just $ toInst "Show" [instMethod "show" name]
 
 
     mutListInst :: Maybe String
@@ -328,21 +389,11 @@ classPurs (Class name ms) = mappend "\n" $
             ]
 
     instMethod :: String -> String -> String
-    instMethod name1 name2 = unwords [toName name1, "=", valName <> "." <> toName name2]
+    instMethod name1 name2 = unwords [toName name1, "=", valName <> "_" <> toName name2]
 
     toJsValueInst
       | hasInstanceMethod "to_js_value" = Just $ toInst "ToJsValue" [proxyMethod $ toName "to_js_value"]
       | otherwise = Nothing
-
-    toConvertInst str
-      | str == "bech32" && getArgNum "to_bech32" /= Just 0 = Nothing
-      | hasMethods = Just $ toInst ("Is" <> toType str)
-                                  [ proxyMethod (toName $ "to_" <> str)
-                                  , proxyMethod (toName $ "from_" <> str)
-                                  ]
-      | otherwise = Nothing
-      where
-        hasMethods = hasInstanceMethod ("to_" <> str) && hasInstanceMethod ("from_" <> str)
 
     getArgNum name = fmap (length . fun'args) $ L.find ((== name) . fun'name) $ method'fun <$> ms
 
@@ -388,7 +439,7 @@ indent str = "  " <> str
 
 classJs :: Class -> String
 classJs (Class name ms) =
-  unlines $ pre : (methodJs name <$> ms)
+  unlines $ pre : (methodJs name <$> filter (not . isCommon . method'fun) ms)
   where
     pre = "// " <> name
 
@@ -420,19 +471,14 @@ toName = lowerHead . substFirst . subst . toCamel
 
 subst :: String -> String
 subst = replacesBy replace
-  [("Transaction", "Tx")
-  , ("Input", "In")
-  , ("Output", "Out")
-  , ("Uint8Array", "Bytes")
+  [ ("Uint8Array", "ByteArray")
   , ("Void", "Unit")
   , ("JSON", "Json")
   ]
 
 substFirst :: String -> String
 substFirst = replacesBy replaceFirst
-  [("transaction", "tx")
-  , ("input", "in")
-  , ("output", "out")
+  [
   ]
 
 replaceFirst :: String -> String -> String -> String
@@ -491,7 +537,8 @@ dirtyClassSet = Set.fromList
   [ "TransactionBuilder"
   , "TransactionWitnessSet"
   , "TransactionWitnessSets"
-  , "TxInputsBuilder"]
+  , "TxInputsBuilder"
+  ]
 
 listTypeMap :: Map String String
 listTypeMap = Map.fromList listTypes
@@ -623,5 +670,3 @@ canThrow :: String -> String -> Bool
 canThrow _className methodName = Set.member methodName froms
   where
     froms = Set.fromList ["from_hex", "from_bytes", "from_bech32", "from_json", "from_str"]
-
-

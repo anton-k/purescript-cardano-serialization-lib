@@ -3,29 +3,48 @@ module Csl(
   module X
 ) where
 
-import Csl.Gen as X
-import Csl.Parse as X
-import Csl.Types as X
-
--------------------------------------------------------------------------------------
--- export parts
-
-exportJsFuns = genExport "fun.js" getFuns funJs
-exportPursTypes = genExport "types.purs" (classTypes <$> getClasses) typePurs
-exportPursFuns = genExport "fun.purs" getFuns funPurs
-exportPursClasses = genExport "class.purs" getClasses classPurs
-exportJsClasses = genExport "class.js" getClasses classJs
-
-exportPursExportList = do
-  funs <- getFuns
-  cls <- getClasses
-  exportFile "export.purs" $ unlines $ exportListPurs funs cls
+import           Csl.Gen   as X
+import           Csl.Parse as X
+import           Csl.Types as X
 
 -------------------------------------------------------------------------------------
 -- read parts
 
-getFuns = funs <$> readFile file
-getClasses = fmap parseClass . toClassParts  <$> readFile file
+getFuns = filter (flip elem neededFunctions . fun'name) .
+          funs <$> readFile file
+getClasses
+  = filter (not . flip elem unneededClasses . class'name)
+  . fmap parseClass
+  . toClassParts
+  <$> readFile file
+
+unneededClasses =
+  [ -- builder classes, not used by us
+    "TransactionBuilder"
+  , "TransactionBuilderConfigBuilder"
+  , "TransactionBuilderConfig"
+  , "TransactionOutputAmountBuilder"
+  , "TransactionOutputBuilder"
+  , "TxBuilderConstants"
+  , "TxInputsBuilder"
+  , "MintBuilder"
+  -- block data, not needed for us
+  , "Block"
+  , "Header"
+  , "HeaderBody"
+  , "TransactionBodies"
+  , "AuxiliaryDataSet"
+  , "TransactionWitnessSets"
+  , "Int"
+  , "Strings"
+  , "PublicKeys"
+  ]
+
+neededFunctions =
+  [ "hash_transaction"
+  , "hash_plutus_data"
+  , "min_ada_for_output"
+  ]
 
 -------------------------------------------------------------------------------------
 -- utils
@@ -36,4 +55,3 @@ genExport name extract parse =
 
 exportFile :: FilePath -> String -> IO ()
 exportFile name content = writeFile ("output/" <> name) content
-
