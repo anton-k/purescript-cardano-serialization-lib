@@ -33,6 +33,7 @@ standardTypes = Set.fromList
 extraExport :: [String]
 extraExport =
   [ "ForeignErrorable"
+  , "module X"
   ]
 
 exportListPurs :: [Fun] -> [Class] -> String
@@ -92,7 +93,6 @@ funPurs fun@(Fun name args res) =
     argTypeNames = toType . arg'type <$> args
 
 preFunComment = funCommentBy preComment
-postFunComment = funCommentBy postComment
 
 funCommentBy title f =
   L.intercalate "\n"
@@ -119,7 +119,7 @@ data FunSpec = FunSpec
   { funSpec'parent    :: String
   , funSpec'skipFirst :: Bool
   , funSpec'prefix    :: String
-  , funSpec'pure     :: Bool
+  , funSpec'pureness  :: Pureness
   }
 
 isCommon :: Fun -> Bool
@@ -163,25 +163,49 @@ isMapContainer (Class _ methods) = do
       Just (keyType, valueType)
     getKeyValue _ = Nothing
 
+-- process standalone functions
 funJs :: Fun -> String
-funJs f = funJsBy (FunSpec "CSL" False "" (isPure "" f)) f
+funJs f = funJsBy (FunSpec "CSL" False "" (getPureness "" f)) f
 
 funJsBy :: FunSpec -> Fun -> String
-funJsBy (FunSpec parent isSkipFirst prefix pureFun) (Fun name args res) =
+funJsBy (FunSpec parent isSkipFirst prefix pureness) (Fun name args res) =
   unwords
   [ "export const"
   , prefix <> toName name
   , if L.null argNames
       then "="
       else "= " <> L.intercalate " => " argNames <> " =>"
-  , flip mappend ";" $
-        let isThrow = canThrow parent name
-        in  mconcat [if isThrow then "errorableToPurs(" else "", parent, ".", name, if isThrow then ", " else "(", if L.null jsArgs then "" else (L.intercalate ", " jsArgs) ,")"]
+  , withSemicolon $ mconcat $
+    if pureness == Throwing
+    then
+      -- errorableToPurs(CSL.foo, arg1, arg2)
+      [ "errorableToPurs("
+      , parent
+      , "."
+      , name
+      , ", "
+      , L.intercalate ", " jsArgs
+      , ")"
+      ]
+    else
+      -- CSL.foo(arg1, arg2)
+      [ parent
+      , "."
+      , name
+      , "("
+      , L.intercalate ", " jsArgs
+      , ")"
+      ]
   ]
   where
-    argNames = (if pureFun then id else (<> ["()"])) argNamesIn
+    -- if a function is mutating, we add another function wrapper that represents
+    -- PureScript's `Effect` at runtime
+    argNames = (if pureness == Mutating then (<> ["()"]) else id) argNamesIn
     argNamesIn = fmap (filter (/= '?')) $ arg'name <$> args
     jsArgs = (if isSkipFirst then tail else id) argNamesIn
+
+withSemicolon :: String -> String
+withSemicolon = flip mappend ";"
 
 data HandleNulls = UseNullable | UseMaybe
 
