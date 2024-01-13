@@ -19,14 +19,12 @@ main = do
   print funs
   -- print classes
   let
-    filteredClasses = classes <&> \(Class name methods) -> Class name $
-      filter (not . isCommon . method'fun) methods
     nonCommonFuns = filter (not . isCommon) funs
     funsJsCode = unlines $ funJs <$> nonCommonFuns
     funsPursCode = unlines $ funPurs <$> nonCommonFuns
     classesPursCode = unlines $ classPurs <$> classes
-    classesJsCode = unlines $ classJs <$> filteredClasses
-    exportsPursCode = exportListPurs nonCommonFuns filteredClasses
+    classesJsCode = unlines $ classJs <$> classes
+    exportsPursCode = exportListPurs nonCommonFuns classes
   createDirectoryIfMissing True $ takeDirectory $ exportPath <> "/"
   createDirectoryIfMissing True $ takeDirectory $ exportPath <> "/Lib/"
   writeFile (exportPath <> "Lib.purs") $ unlines

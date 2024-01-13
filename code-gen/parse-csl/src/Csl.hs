@@ -35,7 +35,6 @@ unneededClasses =
   , "TransactionBodies"
   , "AuxiliaryDataSet"
   , "TransactionWitnessSets"
-  , "Int"
   , "Strings"
   , "PublicKeys"
   ]
