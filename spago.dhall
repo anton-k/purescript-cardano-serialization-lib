@@ -12,17 +12,19 @@ to generate this file without the comments in this block.
 -}
 { name = "my-project"
 , dependencies =
-  [ "arraybuffer-types"
-  , "console"
+  [ "aeson"
+  , "argonaut"
+  , "bifunctors"
+  , "bytearrays"
   , "effect"
   , "either"
   , "maybe"
   , "nullable"
-  , "partial"
+  , "ordered-collections"
   , "prelude"
-  , "foldable-traversable"
-  , "argonaut-core"
+  , "profunctor"
+  , "tuples"
   ]
 , packages = ./packages.dhall
-, sources = [ "src/**/*.purs", "test/**/*.purs", "app/**/*.purs" ]
+, sources = [ "src/**/*.purs", "test/**/*.purs" ]
 }

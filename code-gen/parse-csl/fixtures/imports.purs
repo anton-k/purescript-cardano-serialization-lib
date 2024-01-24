@@ -3,14 +3,20 @@ import Prelude
 import Cardano.Serialization.Lib.Internal
 import Cardano.Serialization.Lib.Internal
   ( class IsBytes
+  , class IsCsl
+  , class IsJson
   , toBytes
   , fromBytes
+  , packListContainer
   , packMapContainer
   , packMapContainerFromMap
   , unpackMapContainerToMapWith
   , unpackMapContainer
+  , unpackListContainer
   , cslFromAeson
   , cslToAeson
+  , cslFromAesonViaBytes
+  , cslToAesonViaBytes
   ) as X
 import Effect
 import Data.Nullable

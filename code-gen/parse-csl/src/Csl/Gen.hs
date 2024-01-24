@@ -196,16 +196,28 @@ data HandleNulls = UseNullable | UseMaybe
 commonInstances :: Class -> String
 commonInstances (Class name methods) = unlines $
   [ "instance IsCsl " <> name <> " where\n  className _ = \"" <> name <> "\"" ] <>
-  (if hasInstanceMethod "to_bytes" && hasInstanceMethod "from_bytes"
+  (if hasBytes
    then [ "instance IsBytes " <> name ]
    else []) <>
-  (if hasInstanceMethod "to_json" && hasInstanceMethod "from_json"
-   then [ "instance IsJson " <> name
-        , "instance EncodeAeson " <> name <> " where encodeAeson = cslToAeson"
-        , "instance DecodeAeson " <> name <> " where decodeAeson = cslFromAeson"
-        ]
-   else [])
+  (if hasJson
+   then
+      [ "instance IsJson " <> name
+      , "instance EncodeAeson " <> name <> " where encodeAeson = cslToAeson"
+      , "instance DecodeAeson " <> name <> " where decodeAeson = cslFromAeson"
+      , "instance Show " <> name <> " where show = showViaJson"
+      ]
+   else
+     if hasBytes
+     then
+       [ "instance EncodeAeson " <> name <> " where encodeAeson = cslToAesonViaBytes"
+       , "instance DecodeAeson " <> name <> " where decodeAeson = cslFromAesonViaBytes"
+       , "instance Show " <> name <> " where show = showViaBytes"
+       ]
+     else []
+  )
   where
+    hasBytes =  hasInstanceMethod "to_bytes" && hasInstanceMethod "from_bytes"
+    hasJson = hasInstanceMethod "to_json" && hasInstanceMethod "from_json"
     hasInstanceMethod str = Set.member str methodNameSet
     methodNameSet = Set.fromList $ fun'name . method'fun <$> methods
 
@@ -400,7 +412,7 @@ indent str = "  " <> str
 
 filterMethods :: Class -> [Method]
 filterMethods (Class name ms)
-  | name == "PublicKey" = ms -- PublicKey is a bit out of order.
+  | name `elem` ["PublicKey", "PrivateKey"] = ms -- these types need special handling
   | otherwise = filter (not . isCommon . method'fun) ms
 
 classJs :: Class -> String
@@ -560,6 +572,10 @@ throwingSet = mconcat $
     ]
   , inClass "PublicKey"
     [ "from_bytes" ]
+  , inClass "PrivateKey"
+    [ "from_normal_bytes" ]
+  , inClass "ByronAddress"
+    [ "from_base58" ]
   ]
   where
     inClass name ms = Set.fromList $ fmap (name, ) ms
@@ -579,6 +595,8 @@ mutating =
     , keys "Mint" <> inClass "Mint" ["new_from_entry", "as_positive_multiasset", "as_negative_multiasset"]
     , keys "MintAssets"
     , inClass "MultiAsset" ["new", "len", "inset", "get", "get_asset", "set_asset", "keys", "sub"]
+    , inClass "Value" ["set_multiasset"]
+    , inClass "TransactionOutput" ["set_data_hash", "set_plutus_data", "set_script_ref"]
     , keys "PlutusMap"
     , keys "ProposedProtocolParameterUpdates"
     , keys "Withdrawals"
@@ -605,4 +623,12 @@ intPos = mempty
 isCommonThrowingMethod :: String -> Bool
 isCommonThrowingMethod methodName = Set.member methodName froms
   where
-    froms = Set.fromList ["from_hex", "from_bytes", "from_bech32", "from_json", "from_str"]
+    froms = Set.fromList
+      [ "from_hex"
+      , "from_bytes"
+      , "from_normal_bytes"
+      , "from_extended_bytes"
+      , "from_bech32"
+      , "from_json"
+      , "from_str"
+      ]

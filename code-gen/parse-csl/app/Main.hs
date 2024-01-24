@@ -14,6 +14,7 @@ main = do
   jsLibHeader <- readFile "./fixtures/Lib.js"
   importsCode <- readFile "./fixtures/imports.purs"
   pursInternalLib <- readFile "./fixtures/Internal.purs"
+  jsInternalLib <- readFile "./fixtures/Internal.purs"
   funs <- getFuns
   classes <- getClasses
   print funs
@@ -44,5 +45,6 @@ main = do
     , funsJsCode
     ]
   writeFile (exportPath <> "Lib/Internal.purs") pursInternalLib
+  writeFile (exportPath <> "Lib/Internal.js") jsInternalLib
 
 pursLibHeader = "module Cardano.Serialization.Lib\n  ( "
