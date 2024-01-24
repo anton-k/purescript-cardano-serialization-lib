@@ -1,3 +1,4 @@
+.spago2nix/
 .spago/
 output/
 demo/dist/
