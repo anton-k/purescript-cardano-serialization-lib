@@ -131,19 +131,6 @@ module Cardano.Serialization.Lib
   , exUnits_mem
   , exUnits_steps
   , exUnits_new
-  , fixedTransaction_new
-  , fixedTransaction_newWithAuxiliary
-  , fixedTransaction_body
-  , fixedTransaction_rawBody
-  , fixedTransaction_setBody
-  , fixedTransaction_setWitnessSet
-  , fixedTransaction_witnessSet
-  , fixedTransaction_rawWitnessSet
-  , fixedTransaction_setIsValid
-  , fixedTransaction_isValid
-  , fixedTransaction_setAuxiliaryData
-  , fixedTransaction_auxiliaryData
-  , fixedTransaction_rawAuxiliaryData
   , generalTransactionMetadata_new
   , genesisDelegateHash_toBech32
   , genesisDelegateHash_fromBech32
@@ -633,7 +620,6 @@ module Cardano.Serialization.Lib
   , EnterpriseAddress
   , ExUnitPrices
   , ExUnits
-  , FixedTransaction
   , GeneralTransactionMetadata
   , GenesisDelegateHash
   , GenesisHash
@@ -876,13 +862,13 @@ foreign import data AuxiliaryData :: Type
 
 foreign import auxiliaryData_new :: Effect AuxiliaryData
 foreign import auxiliaryData_metadata :: AuxiliaryData -> Nullable GeneralTransactionMetadata
-foreign import auxiliaryData_setMetadata :: AuxiliaryData -> GeneralTransactionMetadata -> Nullable Unit
-foreign import auxiliaryData_nativeScripts :: AuxiliaryData -> Effect ((Nullable NativeScripts))
-foreign import auxiliaryData_setNativeScripts :: AuxiliaryData -> NativeScripts -> Nullable Unit
-foreign import auxiliaryData_plutusScripts :: AuxiliaryData -> Effect ((Nullable PlutusScripts))
-foreign import auxiliaryData_setPlutusScripts :: AuxiliaryData -> PlutusScripts -> Nullable Unit
+foreign import auxiliaryData_setMetadata :: AuxiliaryData -> GeneralTransactionMetadata -> Effect Unit
+foreign import auxiliaryData_nativeScripts :: AuxiliaryData -> Nullable NativeScripts
+foreign import auxiliaryData_setNativeScripts :: AuxiliaryData -> NativeScripts -> Effect Unit
+foreign import auxiliaryData_plutusScripts :: AuxiliaryData -> Nullable PlutusScripts
+foreign import auxiliaryData_setPlutusScripts :: AuxiliaryData -> PlutusScripts -> Effect Unit
 foreign import auxiliaryData_preferAlonzoFormat :: AuxiliaryData -> Boolean
-foreign import auxiliaryData_setPreferAlonzoFormat :: AuxiliaryData -> Boolean -> Nullable Unit
+foreign import auxiliaryData_setPreferAlonzoFormat :: AuxiliaryData -> Boolean -> Effect Unit
 
 instance IsCsl AuxiliaryData where
   className _ = "AuxiliaryData"
@@ -1335,32 +1321,6 @@ instance IsJson ExUnits
 instance EncodeAeson ExUnits where encodeAeson = cslToAeson
 instance DecodeAeson ExUnits where decodeAeson = cslFromAeson
 instance Show ExUnits where show = showViaJson
-
--------------------------------------------------------------------------------------
--- Fixed transaction
-
-foreign import data FixedTransaction :: Type
-
-foreign import fixedTransaction_new :: ByteArray -> ByteArray -> Boolean -> FixedTransaction
-foreign import fixedTransaction_newWithAuxiliary :: ByteArray -> ByteArray -> ByteArray -> Boolean -> FixedTransaction
-foreign import fixedTransaction_body :: FixedTransaction -> TransactionBody
-foreign import fixedTransaction_rawBody :: FixedTransaction -> ByteArray
-foreign import fixedTransaction_setBody :: FixedTransaction -> ByteArray -> Nullable Unit
-foreign import fixedTransaction_setWitnessSet :: FixedTransaction -> ByteArray -> Nullable Unit
-foreign import fixedTransaction_witnessSet :: FixedTransaction -> TransactionWitnessSet
-foreign import fixedTransaction_rawWitnessSet :: FixedTransaction -> ByteArray
-foreign import fixedTransaction_setIsValid :: FixedTransaction -> Boolean -> Nullable Unit
-foreign import fixedTransaction_isValid :: FixedTransaction -> Boolean
-foreign import fixedTransaction_setAuxiliaryData :: FixedTransaction -> ByteArray -> Nullable Unit
-foreign import fixedTransaction_auxiliaryData :: FixedTransaction -> Nullable AuxiliaryData
-foreign import fixedTransaction_rawAuxiliaryData :: FixedTransaction -> Nullable ByteArray
-
-instance IsCsl FixedTransaction where
-  className _ = "FixedTransaction"
-instance IsBytes FixedTransaction
-instance EncodeAeson FixedTransaction where encodeAeson = cslToAesonViaBytes
-instance DecodeAeson FixedTransaction where decodeAeson = cslFromAesonViaBytes
-instance Show FixedTransaction where show = showViaBytes
 
 -------------------------------------------------------------------------------------
 -- General transaction metadata
@@ -2213,51 +2173,51 @@ instance IsMapContainer ProposedProtocolParameterUpdates GenesisHash ProtocolPar
 
 foreign import data ProtocolParamUpdate :: Type
 
-foreign import protocolParamUpdate_setMinfeeA :: ProtocolParamUpdate -> BigNum -> Nullable Unit
+foreign import protocolParamUpdate_setMinfeeA :: ProtocolParamUpdate -> BigNum -> Effect Unit
 foreign import protocolParamUpdate_minfeeA :: ProtocolParamUpdate -> Nullable BigNum
-foreign import protocolParamUpdate_setMinfeeB :: ProtocolParamUpdate -> BigNum -> Nullable Unit
+foreign import protocolParamUpdate_setMinfeeB :: ProtocolParamUpdate -> BigNum -> Effect Unit
 foreign import protocolParamUpdate_minfeeB :: ProtocolParamUpdate -> Nullable BigNum
-foreign import protocolParamUpdate_setMaxBlockBodySize :: ProtocolParamUpdate -> Number -> Nullable Unit
+foreign import protocolParamUpdate_setMaxBlockBodySize :: ProtocolParamUpdate -> Number -> Effect Unit
 foreign import protocolParamUpdate_maxBlockBodySize :: ProtocolParamUpdate -> Nullable Number
-foreign import protocolParamUpdate_setMaxTxSize :: ProtocolParamUpdate -> Number -> Nullable Unit
+foreign import protocolParamUpdate_setMaxTxSize :: ProtocolParamUpdate -> Number -> Effect Unit
 foreign import protocolParamUpdate_maxTxSize :: ProtocolParamUpdate -> Nullable Number
-foreign import protocolParamUpdate_setMaxBlockHeaderSize :: ProtocolParamUpdate -> Number -> Nullable Unit
+foreign import protocolParamUpdate_setMaxBlockHeaderSize :: ProtocolParamUpdate -> Number -> Effect Unit
 foreign import protocolParamUpdate_maxBlockHeaderSize :: ProtocolParamUpdate -> Nullable Number
-foreign import protocolParamUpdate_setKeyDeposit :: ProtocolParamUpdate -> BigNum -> Nullable Unit
+foreign import protocolParamUpdate_setKeyDeposit :: ProtocolParamUpdate -> BigNum -> Effect Unit
 foreign import protocolParamUpdate_keyDeposit :: ProtocolParamUpdate -> Nullable BigNum
-foreign import protocolParamUpdate_setPoolDeposit :: ProtocolParamUpdate -> BigNum -> Nullable Unit
+foreign import protocolParamUpdate_setPoolDeposit :: ProtocolParamUpdate -> BigNum -> Effect Unit
 foreign import protocolParamUpdate_poolDeposit :: ProtocolParamUpdate -> Nullable BigNum
-foreign import protocolParamUpdate_setMaxEpoch :: ProtocolParamUpdate -> Number -> Nullable Unit
+foreign import protocolParamUpdate_setMaxEpoch :: ProtocolParamUpdate -> Number -> Effect Unit
 foreign import protocolParamUpdate_maxEpoch :: ProtocolParamUpdate -> Nullable Number
-foreign import protocolParamUpdate_setNOpt :: ProtocolParamUpdate -> Number -> Nullable Unit
+foreign import protocolParamUpdate_setNOpt :: ProtocolParamUpdate -> Number -> Effect Unit
 foreign import protocolParamUpdate_nOpt :: ProtocolParamUpdate -> Nullable Number
-foreign import protocolParamUpdate_setPoolPledgeInfluence :: ProtocolParamUpdate -> UnitInterval -> Nullable Unit
+foreign import protocolParamUpdate_setPoolPledgeInfluence :: ProtocolParamUpdate -> UnitInterval -> Effect Unit
 foreign import protocolParamUpdate_poolPledgeInfluence :: ProtocolParamUpdate -> Nullable UnitInterval
-foreign import protocolParamUpdate_setExpansionRate :: ProtocolParamUpdate -> UnitInterval -> Nullable Unit
+foreign import protocolParamUpdate_setExpansionRate :: ProtocolParamUpdate -> UnitInterval -> Effect Unit
 foreign import protocolParamUpdate_expansionRate :: ProtocolParamUpdate -> Nullable UnitInterval
-foreign import protocolParamUpdate_setTreasuryGrowthRate :: ProtocolParamUpdate -> UnitInterval -> Nullable Unit
+foreign import protocolParamUpdate_setTreasuryGrowthRate :: ProtocolParamUpdate -> UnitInterval -> Effect Unit
 foreign import protocolParamUpdate_treasuryGrowthRate :: ProtocolParamUpdate -> Nullable UnitInterval
 foreign import protocolParamUpdate_d :: ProtocolParamUpdate -> Nullable UnitInterval
 foreign import protocolParamUpdate_extraEntropy :: ProtocolParamUpdate -> Nullable Nonce
-foreign import protocolParamUpdate_setProtocolVersion :: ProtocolParamUpdate -> ProtocolVersion -> Nullable Unit
+foreign import protocolParamUpdate_setProtocolVersion :: ProtocolParamUpdate -> ProtocolVersion -> Effect Unit
 foreign import protocolParamUpdate_protocolVersion :: ProtocolParamUpdate -> Nullable ProtocolVersion
-foreign import protocolParamUpdate_setMinPoolCost :: ProtocolParamUpdate -> BigNum -> Nullable Unit
+foreign import protocolParamUpdate_setMinPoolCost :: ProtocolParamUpdate -> BigNum -> Effect Unit
 foreign import protocolParamUpdate_minPoolCost :: ProtocolParamUpdate -> Nullable BigNum
-foreign import protocolParamUpdate_setAdaPerUtxoByte :: ProtocolParamUpdate -> BigNum -> Nullable Unit
+foreign import protocolParamUpdate_setAdaPerUtxoByte :: ProtocolParamUpdate -> BigNum -> Effect Unit
 foreign import protocolParamUpdate_adaPerUtxoByte :: ProtocolParamUpdate -> Nullable BigNum
-foreign import protocolParamUpdate_setCostModels :: ProtocolParamUpdate -> Costmdls -> Nullable Unit
+foreign import protocolParamUpdate_setCostModels :: ProtocolParamUpdate -> Costmdls -> Effect Unit
 foreign import protocolParamUpdate_costModels :: ProtocolParamUpdate -> Nullable Costmdls
-foreign import protocolParamUpdate_setExecutionCosts :: ProtocolParamUpdate -> ExUnitPrices -> Nullable Unit
+foreign import protocolParamUpdate_setExecutionCosts :: ProtocolParamUpdate -> ExUnitPrices -> Effect Unit
 foreign import protocolParamUpdate_executionCosts :: ProtocolParamUpdate -> Nullable ExUnitPrices
-foreign import protocolParamUpdate_setMaxTxExUnits :: ProtocolParamUpdate -> ExUnits -> Nullable Unit
+foreign import protocolParamUpdate_setMaxTxExUnits :: ProtocolParamUpdate -> ExUnits -> Effect Unit
 foreign import protocolParamUpdate_maxTxExUnits :: ProtocolParamUpdate -> Nullable ExUnits
-foreign import protocolParamUpdate_setMaxBlockExUnits :: ProtocolParamUpdate -> ExUnits -> Nullable Unit
+foreign import protocolParamUpdate_setMaxBlockExUnits :: ProtocolParamUpdate -> ExUnits -> Effect Unit
 foreign import protocolParamUpdate_maxBlockExUnits :: ProtocolParamUpdate -> Nullable ExUnits
-foreign import protocolParamUpdate_setMaxValueSize :: ProtocolParamUpdate -> Number -> Nullable Unit
+foreign import protocolParamUpdate_setMaxValueSize :: ProtocolParamUpdate -> Number -> Effect Unit
 foreign import protocolParamUpdate_maxValueSize :: ProtocolParamUpdate -> Nullable Number
-foreign import protocolParamUpdate_setCollateralPercentage :: ProtocolParamUpdate -> Number -> Nullable Unit
+foreign import protocolParamUpdate_setCollateralPercentage :: ProtocolParamUpdate -> Number -> Effect Unit
 foreign import protocolParamUpdate_collateralPercentage :: ProtocolParamUpdate -> Nullable Number
-foreign import protocolParamUpdate_setMaxCollateralInputs :: ProtocolParamUpdate -> Number -> Nullable Unit
+foreign import protocolParamUpdate_setMaxCollateralInputs :: ProtocolParamUpdate -> Number -> Effect Unit
 foreign import protocolParamUpdate_maxCollateralInputs :: ProtocolParamUpdate -> Nullable Number
 foreign import protocolParamUpdate_new :: ProtocolParamUpdate
 
@@ -2725,7 +2685,7 @@ foreign import transaction_body :: Transaction -> TransactionBody
 foreign import transaction_witnessSet :: Transaction -> TransactionWitnessSet
 foreign import transaction_isValid :: Transaction -> Boolean
 foreign import transaction_auxiliaryData :: Transaction -> Nullable AuxiliaryData
-foreign import transaction_setIsValid :: Transaction -> Boolean -> Nullable Unit
+foreign import transaction_setIsValid :: Transaction -> Boolean -> Effect Unit
 foreign import transaction_new :: TransactionBody -> TransactionWitnessSet -> AuxiliaryData -> Transaction
 
 instance IsCsl Transaction where
@@ -2766,36 +2726,36 @@ foreign import transactionBody_outputs :: TransactionBody -> TransactionOutputs
 foreign import transactionBody_fee :: TransactionBody -> BigNum
 foreign import transactionBody_ttl :: TransactionBody -> Nullable Number
 foreign import transactionBody_ttlBignum :: TransactionBody -> Nullable BigNum
-foreign import transactionBody_setTtl :: TransactionBody -> BigNum -> Nullable Unit
+foreign import transactionBody_setTtl :: TransactionBody -> BigNum -> Effect Unit
 foreign import transactionBody_removeTtl :: TransactionBody -> Nullable Unit
-foreign import transactionBody_setCerts :: TransactionBody -> Certificates -> Nullable Unit
+foreign import transactionBody_setCerts :: TransactionBody -> Certificates -> Effect Unit
 foreign import transactionBody_certs :: TransactionBody -> Nullable Certificates
-foreign import transactionBody_setWithdrawals :: TransactionBody -> Withdrawals -> Nullable Unit
+foreign import transactionBody_setWithdrawals :: TransactionBody -> Withdrawals -> Effect Unit
 foreign import transactionBody_withdrawals :: TransactionBody -> Nullable Withdrawals
-foreign import transactionBody_setUpdate :: TransactionBody -> Update -> Nullable Unit
+foreign import transactionBody_setUpdate :: TransactionBody -> Update -> Effect Unit
 foreign import transactionBody_update :: TransactionBody -> Nullable Update
-foreign import transactionBody_setAuxiliaryDataHash :: TransactionBody -> AuxiliaryDataHash -> Nullable Unit
+foreign import transactionBody_setAuxiliaryDataHash :: TransactionBody -> AuxiliaryDataHash -> Effect Unit
 foreign import transactionBody_auxiliaryDataHash :: TransactionBody -> Nullable AuxiliaryDataHash
-foreign import transactionBody_setValidityStartInterval :: TransactionBody -> Number -> Nullable Unit
-foreign import transactionBody_setValidityStartIntervalBignum :: TransactionBody -> BigNum -> Nullable Unit
+foreign import transactionBody_setValidityStartInterval :: TransactionBody -> Number -> Effect Unit
+foreign import transactionBody_setValidityStartIntervalBignum :: TransactionBody -> BigNum -> Effect Unit
 foreign import transactionBody_validityStartIntervalBignum :: TransactionBody -> Nullable BigNum
 foreign import transactionBody_validityStartInterval :: TransactionBody -> Nullable Number
-foreign import transactionBody_setMint :: TransactionBody -> Mint -> Nullable Unit
+foreign import transactionBody_setMint :: TransactionBody -> Mint -> Effect Unit
 foreign import transactionBody_mint :: TransactionBody -> Nullable Mint
 foreign import transactionBody_multiassets :: TransactionBody -> Nullable Mint
-foreign import transactionBody_setReferenceInputs :: TransactionBody -> TransactionInputs -> Nullable Unit
+foreign import transactionBody_setReferenceInputs :: TransactionBody -> TransactionInputs -> Effect Unit
 foreign import transactionBody_referenceInputs :: TransactionBody -> Nullable TransactionInputs
-foreign import transactionBody_setScriptDataHash :: TransactionBody -> ScriptDataHash -> Nullable Unit
+foreign import transactionBody_setScriptDataHash :: TransactionBody -> ScriptDataHash -> Effect Unit
 foreign import transactionBody_scriptDataHash :: TransactionBody -> Nullable ScriptDataHash
-foreign import transactionBody_setCollateral :: TransactionBody -> TransactionInputs -> Nullable Unit
+foreign import transactionBody_setCollateral :: TransactionBody -> TransactionInputs -> Effect Unit
 foreign import transactionBody_collateral :: TransactionBody -> Nullable TransactionInputs
-foreign import transactionBody_setRequiredSigners :: TransactionBody -> Ed25519KeyHashes -> Nullable Unit
+foreign import transactionBody_setRequiredSigners :: TransactionBody -> Ed25519KeyHashes -> Effect Unit
 foreign import transactionBody_requiredSigners :: TransactionBody -> Nullable Ed25519KeyHashes
-foreign import transactionBody_setNetworkId :: TransactionBody -> NetworkId -> Nullable Unit
+foreign import transactionBody_setNetworkId :: TransactionBody -> NetworkId -> Effect Unit
 foreign import transactionBody_networkId :: TransactionBody -> Nullable NetworkId
-foreign import transactionBody_setCollateralReturn :: TransactionBody -> TransactionOutput -> Nullable Unit
+foreign import transactionBody_setCollateralReturn :: TransactionBody -> TransactionOutput -> Effect Unit
 foreign import transactionBody_collateralReturn :: TransactionBody -> Nullable TransactionOutput
-foreign import transactionBody_setTotalCollateral :: TransactionBody -> BigNum -> Nullable Unit
+foreign import transactionBody_setTotalCollateral :: TransactionBody -> BigNum -> Effect Unit
 foreign import transactionBody_totalCollateral :: TransactionBody -> Nullable BigNum
 foreign import transactionBody_new :: TransactionInputs -> TransactionOutputs -> BigNum -> Number -> TransactionBody
 foreign import transactionBody_newTxBody :: TransactionInputs -> TransactionOutputs -> BigNum -> TransactionBody
@@ -3110,7 +3070,7 @@ foreign import value_newWithAssets :: BigNum -> MultiAsset -> Value
 foreign import value_zero :: Value
 foreign import value_isZero :: Value -> Boolean
 foreign import value_coin :: Value -> BigNum
-foreign import value_setCoin :: Value -> BigNum -> Nullable Unit
+foreign import value_setCoin :: Value -> BigNum -> Effect Unit
 foreign import value_multiasset :: Value -> Nullable MultiAsset
 foreign import value_setMultiasset :: Value -> MultiAsset -> Effect Unit
 foreign import value_checkedAdd :: Value -> Value -> Nullable Value

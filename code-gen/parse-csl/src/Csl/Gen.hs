@@ -501,8 +501,10 @@ data Pureness = Pure | Mutating | Throwing
 getPureness :: String -> Fun -> Pureness
 getPureness className Fun{..}
   | isConvertor fun'name = Pure
-  | (fun'res /= "void" && not isMutating && not isThrowing) = Pure
+  | take 4 fun'name == "set_" = Mutating
+  | fun'res == "void" = Throwing
   | isMutating && not isThrowing = Mutating
+  | not isMutating && not isThrowing = Pure
   | otherwise = Throwing
    where
      isMutating = dirtyClass className || mutatingMethods (className, fun'name)
@@ -585,7 +587,8 @@ mutating =
   mconcat $
     [ keys "Assets"
     , inClass "TransactionBuilder" ["new"]
-    , inClass "AuxiliaryData" ["new", "native_scripts", "plutus_scripts"]
+    , inClass "AuxiliaryData"
+      [ "new", "set_native_scripts", "set_plutus_scripts", "set_metadata", "set_prefer_alonzo_format" ]
     , inClass "AuxiliaryDataSet" ["new", "insert", "get", "indices"]
     , newSetGet "CostModel"
     , keys "Costmdls"

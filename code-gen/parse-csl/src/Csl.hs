@@ -37,6 +37,7 @@ unneededClasses =
   , "TransactionWitnessSets"
   , "Strings"
   , "PublicKeys"
+  , "FixedTransaction"
   ]
 
 neededFunctions =
