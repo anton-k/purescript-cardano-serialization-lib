@@ -757,11 +757,11 @@ export const transactionMetadatum_newInt = int => CSL.TransactionMetadatum.new_i
 export const transactionMetadatum_newBytes = bytes => CSL.TransactionMetadatum.new_bytes(bytes);
 export const transactionMetadatum_newText = text => CSL.TransactionMetadatum.new_text(text);
 export const transactionMetadatum_kind = self => self.kind.bind(self)();
-export const transactionMetadatum_asMap = self => self.as_map.bind(self)();
-export const transactionMetadatum_asList = self => self.as_list.bind(self)();
-export const transactionMetadatum_asInt = self => self.as_int.bind(self)();
-export const transactionMetadatum_asBytes = self => self.as_bytes.bind(self)();
-export const transactionMetadatum_asText = self => self.as_text.bind(self)();
+export const transactionMetadatum_asMap = self => errorableToPurs(self.as_map.bind(self), );
+export const transactionMetadatum_asList = self => errorableToPurs(self.as_list.bind(self), );
+export const transactionMetadatum_asInt = self => errorableToPurs(self.as_int.bind(self), );
+export const transactionMetadatum_asBytes = self => errorableToPurs(self.as_bytes.bind(self), );
+export const transactionMetadatum_asText = self => errorableToPurs(self.as_text.bind(self), );
 
 // TransactionMetadatumLabels
 export const transactionMetadatumLabels_new = () => CSL.TransactionMetadatumLabels.new();

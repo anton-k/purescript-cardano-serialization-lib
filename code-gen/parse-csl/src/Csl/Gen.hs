@@ -267,7 +267,6 @@ classPurs cls@(Class name ms) = mappend "\n" $
   where
     filteredMethods = filterMethods cls
     filteredClass = Class name filteredMethods
-    isNullType ty = elem '?' ty || isSuffixOf "| void" ty
 
     intro = unlines
       [ replicate 85 '-'
@@ -578,6 +577,8 @@ throwingSet = mconcat $
     [ "from_normal_bytes" ]
   , inClass "ByronAddress"
     [ "from_base58" ]
+  , inClass "TransactionMetadatum"
+    [ "as_map", "as_list", "as_int", "as_bytes", "as_text" ]
   ]
   where
     inClass name ms = Set.fromList $ fmap (name, ) ms

@@ -2829,11 +2829,11 @@ foreign import transactionMetadatum_newInt :: Int -> TransactionMetadatum
 foreign import transactionMetadatum_newBytes :: ByteArray -> TransactionMetadatum
 foreign import transactionMetadatum_newText :: String -> TransactionMetadatum
 foreign import transactionMetadatum_kind :: TransactionMetadatum -> Number
-foreign import transactionMetadatum_asMap :: TransactionMetadatum -> MetadataMap
-foreign import transactionMetadatum_asList :: TransactionMetadatum -> MetadataList
-foreign import transactionMetadatum_asInt :: TransactionMetadatum -> Int
-foreign import transactionMetadatum_asBytes :: TransactionMetadatum -> ByteArray
-foreign import transactionMetadatum_asText :: TransactionMetadatum -> String
+foreign import transactionMetadatum_asMap :: TransactionMetadatum -> Nullable MetadataMap
+foreign import transactionMetadatum_asList :: TransactionMetadatum -> Nullable MetadataList
+foreign import transactionMetadatum_asInt :: TransactionMetadatum -> Nullable Int
+foreign import transactionMetadatum_asBytes :: TransactionMetadatum -> Nullable ByteArray
+foreign import transactionMetadatum_asText :: TransactionMetadatum -> Nullable String
 
 instance IsCsl TransactionMetadatum where
   className _ = "TransactionMetadatum"
