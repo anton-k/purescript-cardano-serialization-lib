@@ -10,16 +10,20 @@ import           Csl.Types as X
 -------------------------------------------------------------------------------------
 -- read parts
 
+getFuns :: IO [Fun]
 getFuns = filter (flip elem neededFunctions . fun'name) .
           funs <$> readFile file
+
+getClasses :: IO [Class]
 getClasses
   = filter (not . flip elem unneededClasses . class'name)
   . fmap parseClass
   . toClassParts
   <$> readFile file
 
+unneededClasses :: [String]
 unneededClasses =
-  [ -- builder classes, not used by us
+  [ -- builder classes, not used by `ps-cardano-types`
     "TransactionBuilder"
   , "TransactionBuilderConfigBuilder"
   , "TransactionBuilderConfig"
@@ -28,18 +32,21 @@ unneededClasses =
   , "TxBuilderConstants"
   , "TxInputsBuilder"
   , "MintBuilder"
-  -- block data, not needed for us
+  -- block data, not needed for `ps-cardano-types`
   , "Block"
   , "Header"
   , "HeaderBody"
   , "TransactionBodies"
   , "AuxiliaryDataSet"
   , "TransactionWitnessSets"
+  -- Types that are not parts of a Transaction and are not needed
   , "Strings"
   , "PublicKeys"
   , "FixedTransaction"
   ]
 
+
+neededFunctions :: [String]
 neededFunctions =
   [ "hash_transaction"
   , "hash_plutus_data"

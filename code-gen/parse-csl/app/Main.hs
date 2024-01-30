@@ -1,12 +1,9 @@
 module Main (main) where
 
 import           Csl
-import           Data.Functor       ((<&>))
-import           Data.Maybe         (mapMaybe)
 import           System.Directory   (createDirectoryIfMissing)
 import           System.Environment (getArgs)
 import           System.FilePath    (takeDirectory)
-import           System.IO          (IOMode (..), withFile)
 
 main :: IO ()
 main = do
