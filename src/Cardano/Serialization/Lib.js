@@ -148,8 +148,17 @@ export const constrPlutusData_data = self => self.data.bind(self)();
 export const constrPlutusData_new = alternative => data => CSL.ConstrPlutusData.new(alternative, data);
 
 // CostModel
+export const costModel_free = self => errorableToPurs(self.free.bind(self), );
+export const costModel_toBytes = self => self.to_bytes.bind(self)();
+export const costModel_fromBytes = bytes => errorableToPurs(CSL.CostModel.from_bytes, bytes);
+export const costModel_toHex = self => self.to_hex.bind(self)();
+export const costModel_fromHex = hex_str => errorableToPurs(CSL.CostModel.from_hex, hex_str);
+export const costModel_toJson = self => self.to_json.bind(self)();
+export const costModel_fromJson = json => errorableToPurs(CSL.CostModel.from_json, json);
 export const costModel_new = () => CSL.CostModel.new();
 export const costModel_set = self => operation => cost => () => self.set.bind(self)(operation, cost);
+export const costModel_get = self => operation => () => self.get.bind(self)(operation);
+export const costModel_len = self => () => self.len.bind(self)();
 
 // Costmdls
 export const costmdls_new = () => CSL.Costmdls.new();

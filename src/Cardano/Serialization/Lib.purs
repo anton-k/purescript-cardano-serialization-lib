@@ -100,8 +100,17 @@ module Cardano.Serialization.Lib
   , constrPlutusData_alternative
   , constrPlutusData_data
   , constrPlutusData_new
+  , costModel_free
+  , costModel_toBytes
+  , costModel_fromBytes
+  , costModel_toHex
+  , costModel_fromHex
+  , costModel_toJson
+  , costModel_fromJson
   , costModel_new
   , costModel_set
+  , costModel_get
+  , costModel_len
   , costmdls_new
   , costmdls_retainLanguageVersions
   , dnsRecordAorAAAA_new
@@ -1128,8 +1137,17 @@ instance Show ConstrPlutusData where show = showViaBytes
 
 foreign import data CostModel :: Type
 
+foreign import costModel_free :: CostModel -> Nullable Unit
+foreign import costModel_toBytes :: CostModel -> ByteArray
+foreign import costModel_fromBytes :: ByteArray -> Nullable CostModel
+foreign import costModel_toHex :: CostModel -> String
+foreign import costModel_fromHex :: String -> Nullable CostModel
+foreign import costModel_toJson :: CostModel -> String
+foreign import costModel_fromJson :: String -> Nullable CostModel
 foreign import costModel_new :: Effect CostModel
 foreign import costModel_set :: CostModel -> Number -> Int -> Effect Int
+foreign import costModel_get :: CostModel -> Number -> Effect Int
+foreign import costModel_len :: CostModel -> Effect Number
 
 instance IsCsl CostModel where
   className _ = "CostModel"

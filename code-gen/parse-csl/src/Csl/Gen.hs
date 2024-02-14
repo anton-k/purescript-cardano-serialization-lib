@@ -341,8 +341,15 @@ substInt = replace "Number" "Int" . replace "number" "int"
 
 filterMethods :: Class -> [Method]
 filterMethods (Class name ms)
-  | name `elem` ["PublicKey", "PrivateKey"] = ms -- these types need special handling
+  -- CostModel is a special case: it looks like a mapping type, but isn't
+  | name `elem` ["PublicKey", "PrivateKey", "CostModel"] =
+      filter (not . isIgnored . method'fun) ms -- these types need special handling
   | otherwise = filter (not . isCommon . method'fun) ms
+  where
+    -- we still need to remove `to_js_value`, because its return type is unknown
+    isIgnored :: Fun -> Bool
+    isIgnored  (Fun "to_js_value" _ _) = True
+    isIgnored _ = False
 
 classJs :: Class -> String
 classJs cls@(Class name _ms) =
