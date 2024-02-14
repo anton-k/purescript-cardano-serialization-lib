@@ -803,17 +803,17 @@ export const transactionUnspentOutputs_new = () => CSL.TransactionUnspentOutputs
 
 // TransactionWitnessSet
 export const transactionWitnessSet_setVkeys = self => vkeys => () => self.set_vkeys.bind(self)(vkeys);
-export const transactionWitnessSet_vkeys = self => () => self.vkeys.bind(self)();
+export const transactionWitnessSet_vkeys = self => self.vkeys.bind(self)();
 export const transactionWitnessSet_setNativeScripts = self => native_scripts => () => self.set_native_scripts.bind(self)(native_scripts);
-export const transactionWitnessSet_nativeScripts = self => () => self.native_scripts.bind(self)();
+export const transactionWitnessSet_nativeScripts = self => self.native_scripts.bind(self)();
 export const transactionWitnessSet_setBootstraps = self => bootstraps => () => self.set_bootstraps.bind(self)(bootstraps);
-export const transactionWitnessSet_bootstraps = self => () => self.bootstraps.bind(self)();
+export const transactionWitnessSet_bootstraps = self => self.bootstraps.bind(self)();
 export const transactionWitnessSet_setPlutusScripts = self => plutus_scripts => () => self.set_plutus_scripts.bind(self)(plutus_scripts);
-export const transactionWitnessSet_plutusScripts = self => () => self.plutus_scripts.bind(self)();
+export const transactionWitnessSet_plutusScripts = self => self.plutus_scripts.bind(self)();
 export const transactionWitnessSet_setPlutusData = self => plutus_data => () => self.set_plutus_data.bind(self)(plutus_data);
-export const transactionWitnessSet_plutusData = self => () => self.plutus_data.bind(self)();
+export const transactionWitnessSet_plutusData = self => self.plutus_data.bind(self)();
 export const transactionWitnessSet_setRedeemers = self => redeemers => () => self.set_redeemers.bind(self)(redeemers);
-export const transactionWitnessSet_redeemers = self => () => self.redeemers.bind(self)();
+export const transactionWitnessSet_redeemers = self => self.redeemers.bind(self)();
 export const transactionWitnessSet_new = () => CSL.TransactionWitnessSet.new();
 
 // URL

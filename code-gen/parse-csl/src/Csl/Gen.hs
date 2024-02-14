@@ -5,6 +5,7 @@ module Csl.Gen
   , funPurs
   , isCommon
   , funJs
+  , getPureness
   ) where
 
 import Control.Monad (guard)
@@ -441,7 +442,7 @@ getPureness className Fun{..}
   | not isMutating && not isThrowing = Pure
   | otherwise = Throwing
    where
-     isMutating = dirtyClass className || mutatingMethods (className, fun'name)
+     isMutating = mutatingMethods (className, fun'name)
      isThrowing = Set.member (className, fun'name) throwingSet || isCommonThrowingMethod fun'name
      isConvertor a = Set.member a convertorSet
 
@@ -455,17 +456,6 @@ convertorSet = Set.fromList $ (\x -> fmap (<> x ) ["to_"]) =<<
 
 mutatingMethods :: (String, String) -> Bool
 mutatingMethods a = Set.member a mutating
-
-dirtyClass :: String -> Bool
-dirtyClass a = Set.member a mutatingClassSet
-
-mutatingClassSet :: Set String
-mutatingClassSet = Set.fromList
-  [ "TransactionBuilder"
-  , "TransactionWitnessSet"
-  , "TransactionWitnessSets"
-  , "TxInputsBuilder"
-  ]
 
 listTypes :: [(String, String)]
 listTypes =
@@ -522,6 +512,7 @@ mutating =
   mconcat $
     [ keys "Assets"
     , inClass "TransactionBuilder" ["new"]
+    , inClass "TransactionWitnessSet" ["new"]
     , inClass "AuxiliaryData"
       [ "new", "set_native_scripts", "set_plutus_scripts", "set_metadata", "set_prefer_alonzo_format" ]
     , inClass "AuxiliaryDataSet" ["new", "insert", "get", "indices"]

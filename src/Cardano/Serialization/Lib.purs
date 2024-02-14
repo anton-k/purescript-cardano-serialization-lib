@@ -2959,17 +2959,17 @@ instance IsListContainer TransactionUnspentOutputs TransactionUnspentOutput
 foreign import data TransactionWitnessSet :: Type
 
 foreign import transactionWitnessSet_setVkeys :: TransactionWitnessSet -> Vkeywitnesses -> Effect Unit
-foreign import transactionWitnessSet_vkeys :: TransactionWitnessSet -> Effect ((Nullable Vkeywitnesses))
+foreign import transactionWitnessSet_vkeys :: TransactionWitnessSet -> Nullable Vkeywitnesses
 foreign import transactionWitnessSet_setNativeScripts :: TransactionWitnessSet -> NativeScripts -> Effect Unit
-foreign import transactionWitnessSet_nativeScripts :: TransactionWitnessSet -> Effect ((Nullable NativeScripts))
+foreign import transactionWitnessSet_nativeScripts :: TransactionWitnessSet -> Nullable NativeScripts
 foreign import transactionWitnessSet_setBootstraps :: TransactionWitnessSet -> BootstrapWitnesses -> Effect Unit
-foreign import transactionWitnessSet_bootstraps :: TransactionWitnessSet -> Effect ((Nullable BootstrapWitnesses))
+foreign import transactionWitnessSet_bootstraps :: TransactionWitnessSet -> Nullable BootstrapWitnesses
 foreign import transactionWitnessSet_setPlutusScripts :: TransactionWitnessSet -> PlutusScripts -> Effect Unit
-foreign import transactionWitnessSet_plutusScripts :: TransactionWitnessSet -> Effect ((Nullable PlutusScripts))
+foreign import transactionWitnessSet_plutusScripts :: TransactionWitnessSet -> Nullable PlutusScripts
 foreign import transactionWitnessSet_setPlutusData :: TransactionWitnessSet -> PlutusList -> Effect Unit
-foreign import transactionWitnessSet_plutusData :: TransactionWitnessSet -> Effect ((Nullable PlutusList))
+foreign import transactionWitnessSet_plutusData :: TransactionWitnessSet -> Nullable PlutusList
 foreign import transactionWitnessSet_setRedeemers :: TransactionWitnessSet -> Redeemers -> Effect Unit
-foreign import transactionWitnessSet_redeemers :: TransactionWitnessSet -> Effect ((Nullable Redeemers))
+foreign import transactionWitnessSet_redeemers :: TransactionWitnessSet -> Nullable Redeemers
 foreign import transactionWitnessSet_new :: Effect TransactionWitnessSet
 
 instance IsCsl TransactionWitnessSet where
