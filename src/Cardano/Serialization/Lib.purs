@@ -595,6 +595,7 @@ module Cardano.Serialization.Lib
   , vkeywitness_signature
   , vkeywitnesses_new
   , withdrawals_new
+  , hashAuxiliaryData
   , hashTransaction
   , hashPlutusData
   , minAdaForOutput
@@ -780,6 +781,10 @@ class IsStr a where
 
 
 -- functions
+-- | Hash auxiliary data
+-- > hashAuxiliaryData auxiliaryData
+foreign import hashAuxiliaryData :: AuxiliaryData -> AuxiliaryDataHash
+
 -- | Hash transaction
 -- > hashTransaction txBody
 foreign import hashTransaction :: TransactionBody -> TransactionHash

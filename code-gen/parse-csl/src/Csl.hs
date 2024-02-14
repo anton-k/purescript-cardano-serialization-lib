@@ -48,7 +48,8 @@ unneededClasses =
 
 neededFunctions :: [String]
 neededFunctions =
-  [ "hash_transaction"
+  [ "hash_auxiliary_data"
+  , "hash_transaction"
   , "hash_plutus_data"
   , "min_ada_for_output"
   ]

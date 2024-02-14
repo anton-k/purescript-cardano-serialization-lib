@@ -877,6 +877,7 @@ export const vkeywitnesses_new = () => CSL.Vkeywitnesses.new();
 export const withdrawals_new = () => CSL.Withdrawals.new();
 
 
+export const hashAuxiliaryData = auxiliary_data => CSL.hash_auxiliary_data(auxiliary_data);
 export const hashTransaction = tx_body => CSL.hash_transaction(tx_body);
 export const hashPlutusData = plutus_data => CSL.hash_plutus_data(plutus_data);
 export const minAdaForOutput = output => data_cost => CSL.min_ada_for_output(output, data_cost);
