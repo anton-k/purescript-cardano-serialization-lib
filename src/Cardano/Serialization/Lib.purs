@@ -595,6 +595,7 @@ module Cardano.Serialization.Lib
   , vkeywitness_signature
   , vkeywitnesses_new
   , withdrawals_new
+  , makeVkeyWitness
   , hashAuxiliaryData
   , hashTransaction
   , hashPlutusData
@@ -784,6 +785,10 @@ class IsStr a where
 
 
 -- functions
+-- | Make vkey witness
+-- > makeVkeyWitness txBodyHash sk
+foreign import makeVkeyWitness :: TransactionHash -> PrivateKey -> Vkeywitness
+
 -- | Hash auxiliary data
 -- > hashAuxiliaryData auxiliaryData
 foreign import hashAuxiliaryData :: AuxiliaryData -> AuxiliaryDataHash
