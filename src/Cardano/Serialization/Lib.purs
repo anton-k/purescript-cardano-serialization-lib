@@ -598,6 +598,7 @@ module Cardano.Serialization.Lib
   , hashAuxiliaryData
   , hashTransaction
   , hashPlutusData
+  , hashScriptData
   , minAdaForOutput
   , Address
   , AssetName
@@ -792,6 +793,10 @@ foreign import hashTransaction :: TransactionBody -> TransactionHash
 -- | Hash plutus data
 -- > hashPlutusData plutusData
 foreign import hashPlutusData :: PlutusData -> DataHash
+
+-- | Hash script data
+-- > hashScriptData redeemers costModels datums
+foreign import hashScriptData :: Redeemers -> Costmdls -> PlutusList -> ScriptDataHash
 
 -- | Min ada for output
 -- > minAdaForOutput output dataCost

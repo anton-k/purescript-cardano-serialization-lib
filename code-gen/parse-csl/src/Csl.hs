@@ -52,6 +52,7 @@ neededFunctions =
   , "hash_transaction"
   , "hash_plutus_data"
   , "min_ada_for_output"
+  , "hash_script_data"
   ]
 
 -------------------------------------------------------------------------------------
