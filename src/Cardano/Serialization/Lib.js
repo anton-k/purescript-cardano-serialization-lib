@@ -882,4 +882,6 @@ export const hashTransaction = tx_body => CSL.hash_transaction(tx_body);
 export const hashPlutusData = plutus_data => CSL.hash_plutus_data(plutus_data);
 export const hashScriptData = redeemers => cost_models => datums => CSL.hash_script_data(redeemers, cost_models, datums);
 export const minAdaForOutput = output => data_cost => CSL.min_ada_for_output(output, data_cost);
+export const minFee = tx => linear_fee => CSL.min_fee(tx, linear_fee);
+export const minScriptFee = tx => ex_unit_prices => CSL.min_script_fee(tx, ex_unit_prices);
 

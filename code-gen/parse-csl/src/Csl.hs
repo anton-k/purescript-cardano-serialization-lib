@@ -53,6 +53,8 @@ neededFunctions =
   , "hash_plutus_data"
   , "min_ada_for_output"
   , "hash_script_data"
+  , "min_script_fee"
+  , "min_fee"
   ]
 
 -------------------------------------------------------------------------------------

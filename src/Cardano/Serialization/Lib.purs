@@ -600,6 +600,8 @@ module Cardano.Serialization.Lib
   , hashPlutusData
   , hashScriptData
   , minAdaForOutput
+  , minFee
+  , minScriptFee
   , Address
   , AssetName
   , AssetNames
@@ -801,6 +803,14 @@ foreign import hashScriptData :: Redeemers -> Costmdls -> PlutusList -> ScriptDa
 -- | Min ada for output
 -- > minAdaForOutput output dataCost
 foreign import minAdaForOutput :: TransactionOutput -> DataCost -> BigNum
+
+-- | Min fee
+-- > minFee tx linearFee
+foreign import minFee :: Transaction -> LinearFee -> BigNum
+
+-- | Min script fee
+-- > minScriptFee tx exUnitPrices
+foreign import minScriptFee :: Transaction -> ExUnitPrices -> BigNum
 
 
 
