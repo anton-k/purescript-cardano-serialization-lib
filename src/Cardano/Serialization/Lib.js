@@ -494,7 +494,7 @@ export const poolRetirement_new = pool_keyhash => epoch => CSL.PoolRetirement.ne
 // PrivateKey
 export const privateKey_free = self => errorableToPurs(self.free.bind(self), );
 export const privateKey_toPublic = self => self.to_public.bind(self)();
-export const privateKey_generateEd25519 = CSL.PrivateKey.generate_ed25519();
+export const privateKey_generateEd25519 = () => CSL.PrivateKey.generate_ed25519();
 export const privateKey_generateEd25519extended = CSL.PrivateKey.generate_ed25519extended();
 export const privateKey_fromBech32 = bech32_str => errorableToPurs(CSL.PrivateKey.from_bech32, bech32_str);
 export const privateKey_toBech32 = self => self.to_bech32.bind(self)();

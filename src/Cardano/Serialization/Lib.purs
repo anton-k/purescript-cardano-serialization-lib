@@ -2180,7 +2180,7 @@ foreign import data PrivateKey :: Type
 
 foreign import privateKey_free :: PrivateKey -> Nullable Unit
 foreign import privateKey_toPublic :: PrivateKey -> PublicKey
-foreign import privateKey_generateEd25519 :: PrivateKey
+foreign import privateKey_generateEd25519 :: Effect PrivateKey
 foreign import privateKey_generateEd25519extended :: PrivateKey
 foreign import privateKey_fromBech32 :: String -> Nullable PrivateKey
 foreign import privateKey_toBech32 :: PrivateKey -> String
