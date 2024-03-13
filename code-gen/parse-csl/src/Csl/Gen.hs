@@ -527,7 +527,7 @@ mutating =
     , inClass "Value" ["set_multiasset"]
     , inClass "TransactionOutput" ["set_data_hash", "set_plutus_data", "set_script_ref"]
     , keys "PlutusMap"
-    , inClass "PrivateKey" ["generate_ed25519"]
+    , inClass "PrivateKey" ["generate_ed25519", "generate_ed25519extended"]
     , keys "ProposedProtocolParameterUpdates"
     , keys "Withdrawals"
     ] ++ map (list . fst) listTypes
