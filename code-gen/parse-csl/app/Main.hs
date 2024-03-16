@@ -11,7 +11,7 @@ main = do
   jsLibHeader <- readFile "./fixtures/Lib.js"
   importsCode <- readFile "./fixtures/imports.purs"
   pursInternalLib <- readFile "./fixtures/Internal.purs"
-  jsInternalLib <- readFile "./fixtures/Internal.purs"
+  jsInternalLib <- readFile "./fixtures/Internal.js"
   funs <- getFuns
   classes <- getClasses
   print funs
