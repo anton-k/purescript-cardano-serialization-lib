@@ -7,8 +7,8 @@ Cardano serialization library can be used to work with Cardano types on frontend
 We can create TX and export them to the form which can then be submitted
 over wallet or API to the node.
 
-The main ide of the library is to provide thin layer of FFI bindings to the original CSL library.
-It does not try to make any abstractions beyond what is provided with CSL. 
+The main idea of the library is to provide thin layer of FFI bindings to the original CSL library.
+It does not try to make any abstractions beyond what is provided with CSL.
 It gives you solid foundation to build your own abstractions.
 
 ## How to use the library
@@ -40,7 +40,7 @@ as external dependency. Provide this library with your JS code package manager
 and also compile the purs code with it as external dep.
 
 See the Makefile for example how to do it. We should build with spago
-and use esbuild on packaging to js code bundle where we can set up the external 
+and use esbuild on packaging to js code bundle where we can set up the external
 dependency on CSL:
 
 ```
@@ -77,5 +77,3 @@ or dirty. Submit an issue if you have found an effectful function
 which is declared like pure and vise versa.
 
 See the `code-gen` directory for the source code of the code parser and generator.
-
-
