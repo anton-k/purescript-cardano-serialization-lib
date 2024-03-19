@@ -31,18 +31,15 @@ export const _packMapContainer = containerClass => elems => {
   for (let elem of elems) {
     container.insert(elem.key, elem.value);
   }
-  console.log(container.to_json());
   return container;
 };
 
 export const _unpackMapContainer = container => {
   const keys = _unpackListContainer(container.keys());
-  console.log("keys", keys);
   const res = [];
   for (let key of keys) {
     res.push({ key, value: container.get(key) });
   }
-  console.log("unpack", res);
   return res;
 };
 
